@@ -2,10 +2,12 @@
 import * as assert from 'assert';
 
 import * as S from './schema';
+import * as util from './util';
 
 export interface WriteStream {
     writeByte(b: number): number;
     writeArray(bs: Array<number>): number;
+    writeUint8Array(bs: Uint8Array): number;
 
     writeVarUint(uval: number): number;
 }
@@ -49,6 +51,12 @@ export class FixedSizeBufStream implements WriteStream {
     }
 
     writeArray(bs: Array<number>) {
+        for (const b of bs) {
+            this.writeByte(b);
+        }
+        return bs.length;
+    }
+    writeUint8Array(bs: Uint8Array) {
         for (const b of bs) {
             this.writeByte(b);
         }
@@ -141,29 +149,9 @@ export class Encoder {
         let written = 0;
         this.stringTable.eachString((s: string) => {
             const len = s.length;
+            const encBytes = util.jsStringToUtf8Bytes(s);
             written += ws.writeVarUint(len);
-            for (let i = 0; i < s.length; i++) {
-                const cc = s.charCodeAt(i);
-                // TODO: implement UTF-8 encoding.
-                /*
-                if ((cc >= 0xD800) && (cc < 0xDC00)) {
-                    throw new Error(`Invalid character ${cc}`);
-                }
-                */
-                if (cc < 0x80) {
-                    written += ws.writeByte(cc);
-                    continue;
-                }
-                if (cc < 0x800) {
-                    written += ws.writeByte(((cc >> 6) & 0x1F) | 0xC0);
-                    written += ws.writeByte((cc & 0x3F) | 0x8);
-                    continue;
-                }
-
-                written += ws.writeByte(((cc >> 12) & 0x0F) | 0xE0);
-                written += ws.writeByte(((cc >> 6) & 0x3F) | 0x80);
-                written += ws.writeByte((cc & 0x3F) | 0x80);
-            }
+            written += ws.writeUint8Array(encBytes);
         });
         return written;
     }
