@@ -8,8 +8,6 @@ export interface WriteStream {
     writeByte(b: number): number;
     writeArray(bs: Array<number>): number;
     writeUint8Array(bs: Uint8Array): number;
-
-    writeVarUint(uval: number): number;
 }
 
 const FIXED_SIZE: number = 0x10000;
@@ -62,8 +60,27 @@ export class FixedSizeBufStream implements WriteStream {
         }
         return bs.length;
     }
+}
 
-    writeVarUint(uval: number) {
+export class EncodingWriter {
+    readonly stream: WriteStream;
+
+    constructor(stream) {
+        this.stream = stream;
+    }
+
+    writeByte(b: number): number {
+        return this.stream.writeByte(b);
+    }
+    writeArray(bs: Array<number>): number {
+        return this.stream.writeArray(bs);
+    }
+
+    writeUint8Array(bs: Uint8Array): number {
+        return this.stream.writeUint8Array(bs);
+    }
+
+    writeVarUint(uval: number): number {
         // ASSERT: Number.isInteger(uval);
         // ASSERT: uval >= 0;
         // ASSERT: uval <= 0xFFFFFFFF
@@ -100,6 +117,11 @@ export class FixedSizeBufStream implements WriteStream {
 
         assert(uval < 0x10000000, `Value ${uval} out of range`);
     }
+
+    writeString(s: string): number {
+        return this.writeVarUint(s.length) +
+               this.writeUint8Array(util.jsStringToUtf8Bytes(s));
+    }
 }
 
 export class StringTable {
@@ -134,6 +156,7 @@ export class Encoder {
     readonly script: S.Script;
     readonly stringTable: StringTable;
     readonly writeStream: WriteStream;
+    readonly encWriter: EncodingWriter;
 
     constructor(params: {script: S.Script,
                          stringTable: StringTable,
@@ -142,10 +165,11 @@ export class Encoder {
         this.script = params.script;
         this.stringTable = params.stringTable;
         this.writeStream = params.writeStream;
+        this.encWriter = new EncodingWriter(this.writeStream);
     }
 
     encodeStringTable(): number {
-        const ws = this.writeStream;
+        const ws = this.encWriter;
         let written = 0;
         this.stringTable.eachString((s: string) => {
             const len = s.length;
