@@ -124,46 +124,49 @@ export class EncodingWriter {
     }
 }
 
-export class StringTable {
+export class Table<T> {
     // Array of all strings in order
-    readonly strings: Array<string>
+    readonly vals: Array<T>;
 
     // Map of each string to its array index.
-    readonly table: Map<string, number>;
+    readonly table: Map<T, number>;
 
-    constructor(strings: Array<string>) {
-        this.strings = strings;
+    constructor(vals: Array<T>) {
+        this.vals = vals;
 
-        const table: Map<string, number> = new Map();
-        strings.forEach((s: string, i: number) => {
+        const table: Map<T, number> = new Map();
+        vals.forEach((s: T, i: number) => {
             table.set(s, i);
         });
         this.table = table;
     }
 
-    stringIndex(s: string): number {
-        const r: number = this.table.get(s);
+    index(v: T): number {
+        const r: number = this.table.get(v);
         assert(Number.isInteger(r));
         return r;
     }
 
-    eachString(cb: (str: string, i?: number) => void) {
-        this.strings.forEach(cb);
+    each(cb: (str: T, i?: number) => void) {
+        this.vals.forEach(cb);
     }
 }
 
 export class Encoder {
     readonly script: S.Script;
-    readonly stringTable: StringTable;
+    readonly stringTable: Table<string>;
+    readonly nodeKindTable: Table<S.BaseNode>;
     readonly writeStream: WriteStream;
     readonly encWriter: EncodingWriter;
 
     constructor(params: {script: S.Script,
-                         stringTable: StringTable,
+                         stringTable: Table<string>,
+                         nodeKindTable: Table<S.BaseNode>,
                          writeStream: WriteStream})
     {
         this.script = params.script;
         this.stringTable = params.stringTable;
+        this.nodeKindTable = params.nodeKindTable;
         this.writeStream = params.writeStream;
         this.encWriter = new EncodingWriter(this.writeStream);
     }
@@ -171,7 +174,7 @@ export class Encoder {
     encodeStringTable(): number {
         const ws = this.encWriter;
         let written = 0;
-        this.stringTable.eachString((s: string) => {
+        this.stringTable.each((s: string) => {
             const len = s.length;
             const encBytes = util.jsStringToUtf8Bytes(s);
             written += ws.writeVarUint(len);

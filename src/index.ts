@@ -4,8 +4,8 @@ import * as fs from 'fs';
 
 import {parseScript} from 'shift-parser';
 import * as S from './schema';
-import {Importer, StringRegistry} from './parse_js';
-import {FixedSizeBufStream, StringTable, Encoder} from './encode_binast';
+import {Importer, Registry} from './parse_js';
+import {FixedSizeBufStream, Table, Encoder} from './encode_binast';
 
 function encode(filename: string) {
     const data: string = fs.readFileSync(filename, "utf8");
@@ -16,13 +16,17 @@ function encode(filename: string) {
     const importer: Importer = new Importer();
     const script: S.Script = importer.liftScript(json);
 
-    const sr: StringRegistry = importer.strings;
-    const strings = sr.stringsInFrequencyOrder();
+    const sr: Registry<string> = importer.strings;
+    const strings = sr.inFrequencyOrder();
     console.debug("DONE LIFTING");
 
-    const stringTable = new StringTable(strings);
+    const stringTable = new Table<string>(strings);
+    const nodeKindTable = new Table<S.BaseNode>([]);
     const writeStream = new FixedSizeBufStream();
-    const encoder = new Encoder({script, stringTable, writeStream});
+    const encoder = new Encoder({script,
+                                 stringTable,
+                                 nodeKindTable,
+                                 writeStream});
 
     const stSize = encoder.encodeStringTable();
     console.log(`Encoded string table size=${stSize}`);

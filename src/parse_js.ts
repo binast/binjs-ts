@@ -331,48 +331,50 @@ class Context {
     }
 }
 
-export class StringRegistry {
-    // Table mapping all strings that are used to
+export class Registry<T> {
+    // Table mapping all grammar nodes that are used to
     // number of uses.
-    freqMap: Map<string, number>;
+    freqMap: Map<T, number>;
 
     constructor() {
         this.freqMap = new Map();
     }
 
-    noteString(s: string) {
-        const count = this.freqMap.get(s);
+    note(v: T) {
+        const count = this.freqMap.get(v);
         const next = (count !== undefined) ? (count as number) + 1
                                            : 1;
-        this.freqMap.set(s, next);
+        this.freqMap.set(v, next);
     }
 
-    // Return an array of all the strings ordered by use.
-    stringsInFrequencyOrder(): Array<string> {
-        const st = this.freqMap;
-        const array: Array<string> = new Array();
-        for (let s of st.keys()) {
-            array.push(s);
+    // Return an array of all the nodes ordered by use.
+    inFrequencyOrder(): Array<T> {
+        const vt = this.freqMap;
+        const array: Array<T> = new Array();
+        for (let v of vt.keys()) {
+            array.push(v);
         }
         // Sort, with highest frequencies showing up first.
-        array.sort((a: string, b: string) => (st.get(b) - st.get(a)));
+        array.sort((a: T, b: T) => (vt.get(b) - vt.get(a)));
 
         return array;
     }
 
-    frequencyOf(s: string) {
-        assert(this.freqMap.has(s));
-        return this.freqMap.get(s);
+    frequencyOf(v: T) {
+        assert(this.freqMap.has(v));
+        return this.freqMap.get(v);
     }
 }
 
 export class Importer {
     readonly cx: Context;
-    readonly strings: StringRegistry;
+    readonly strings: Registry<string>;
+    readonly nodes: Registry<S.BaseNode>;
 
     constructor() {
         this.cx = new Context();
-        this.strings = new StringRegistry();
+        this.strings = new Registry<string>();
+        this.nodes = new Registry<S.BaseNode>();
     }
 
     //
@@ -518,7 +520,7 @@ export class Importer {
     }
 
     liftIdentifier(name: string): S.Identifier {
-        this.strings.noteString(name);
+        this.strings.note(name);
         return name as S.Identifier;
     }
 
@@ -716,7 +718,7 @@ export class Importer {
     }
     liftLabel(label: string|null): S.Label|null {
         if (label !== null) {
-            this.strings.noteString(label as string);
+            this.strings.note(label as string);
         }
         return label as (S.Label|null);
     }
@@ -903,7 +905,7 @@ export class Importer {
         assertType(json.value, 'string');
 
         const value = json.value as string;
-        this.strings.noteString(value);
+        this.strings.note(value);
 
         return new S.LiteralStringExpression({value});
     }
