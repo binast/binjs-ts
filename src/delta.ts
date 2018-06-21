@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 
-import { EncodingWriter } from './encode_binast';
+import { EncodingWriter, WriteStream } from './encode_binast';
 
 export class DeltaWriter {
     private readonly w: EncodingWriter;
@@ -29,10 +29,10 @@ const BITS_PER_BYTE = 8;
 // 11         6-bit signed delta to MRU cell 2
 export class MruDeltaWriter {
     private readonly numCellBits: number;
-    private readonly w: EncodingWriter;
+    private readonly w: WriteStream;
     private buffer: number[];
 
-    constructor(numCellBits: number, w: EncodingWriter) {
+    constructor(numCellBits: number, w: WriteStream) {
         assert(0 <= numCellBits && numCellBits < 6);
 
         this.numCellBits = numCellBits;
@@ -104,7 +104,7 @@ export class MruDeltaWriter {
             this.buffer.splice(0, 0, v);
 
             let byte =
-                minI + 1 << this.numCellBits - 1 |
+                minI + 1 << numDeltaBits |
                 delta & (1 << numDeltaBits) - 1;
             return this.w.writeByte(byte);
         }
