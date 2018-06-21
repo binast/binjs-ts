@@ -204,14 +204,16 @@ export class Encoder {
         const ws = this.encWriter;
         let written = 0;
         let delta = new MruDeltaWriter(3, ws);
-        this.stringTable.eachString((s: string) => {
-            // TODO(dpc): Should this be length in characters or bytes?
-            const len = s.length;
-            // written += ws.writeVarUint(len);
-            written += delta.writeUint(len);
-        });
+        let stringData = [];
         this.stringTable.eachString((s: string) => {
             const encBytes = util.jsStringToUtf8Bytes(s);
+            stringData.push(encBytes);
+            // Note, this is *bytes* and not characters. This lets the
+            // decoder skip chunks of the string table if it wants.
+            const len = encBytes.length;
+            written += delta.writeUint(len);
+        });
+        stringData.forEach((encBytes: Uint8Array) => {
             written += ws.writeUint8Array(encBytes);
         });
         return written;
