@@ -7,6 +7,7 @@
     "build-tsc": "tsc",
     "build-copy-spec": "cp ./es6.webidl ./dist",
     "build": "npm run build-tsc; npm run build-copy-spec",
+    "test": "mocha -r ts-node/register src/**/*-test.ts",
     "encode": "node --max_old_space_size=8192 ./dist/index.js --encode",
     "decode": "node --max_old_space_size=8192 ./dist/index.js --decode"
   },
@@ -17,6 +18,9 @@
     "typescript": ">=2.8.3"
   },
   "devDependencies": {
-    "@types/node": "^10.1.3"
+    "@types/node": "^10.1.3",
+    "chai": "^4.1.2",
+    "mocha": "^5.2.0",
+    "ts-node": "^6.1.2"
   }
 }
