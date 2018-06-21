@@ -1,8 +1,7 @@
-
 import * as assert from 'assert';
 import { Writable } from 'stream';
 
-import { DeltaWriter } from './delta';
+import { MruDeltaWriter } from './delta';
 import * as S from './schema';
 import * as util from './util';
 
@@ -39,7 +38,7 @@ export class FixedSizeBufStream implements WriteStream {
     writeByte(b: number) {
         // assert(this.curOffset < this.cur.length)
         // assert(Number.isInteger(b));
-        // assert((0 <= b) && (b < 128));
+        // assert((0 <= b) && (b < 256));
         const idx = this.curOffset++;
         this.cur[idx] = b;
         if (idx == this.cur.length) {
@@ -204,12 +203,12 @@ export class Encoder {
     encodeStringTable(): number {
         const ws = this.encWriter;
         let written = 0;
-        let delta = new DeltaWriter(ws);
+        let delta = new MruDeltaWriter(3, ws);
         this.stringTable.eachString((s: string) => {
             // TODO(dpc): Should this be length in characters or bytes?
             const len = s.length;
             // written += ws.writeVarUint(len);
-            written += delta.write(len);
+            written += delta.writeUint(len);
         });
         this.stringTable.eachString((s: string) => {
             const encBytes = util.jsStringToUtf8Bytes(s);
