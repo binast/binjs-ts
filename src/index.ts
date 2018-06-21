@@ -25,22 +25,10 @@ function encode(inputFilename: string, outputFilename: string, options: EncodeOp
     }
 
     const sr: StringRegistry = importer.strings;
-    const strings = sr.stringsInLexicographicOrder();
-    console.debug("DONE LIFTING");
-
-    const stringTable = new StringTable(strings);
+    const stringTable = new StringTable(sr.stringsInLexicographicOrder());
     const writeStream = new FixedSizeBufStream();
     const encoder = new Encoder({ script, stringTable, writeStream });
-
-    const stSize = encoder.encodeStringTable();
-    //    console.log(`Encoded string table size = ${ stSize } `);
-    // let stLength = 0;
-    /*    strings.forEach((s, i) => {
-            const f = sr.frequencyOf(s);
-            console.log(`String[${ i }] \`${s}\` - ${f}`);
-    stLength += (s.length + 1);
-}); */
-    // console.log(`String table length: ${stLength}`);
+    encoder.encodeStringTable();
 
     const outputWriter: stream.Writable = fs.createWriteStream(outputFilename);
     writeStream.copyToWritable(outputWriter);

@@ -2,6 +2,7 @@
 import * as assert from 'assert';
 import { Writable } from 'stream';
 
+import { DeltaWriter } from './delta';
 import * as S from './schema';
 import * as util from './util';
 
@@ -136,6 +137,19 @@ export class EncodingWriter {
         assert(uval < 0x10000000, `Value ${uval} out of range`);
     }
 
+    writeVarInt(val: number): number {
+        assert(Math.floor(val) === val, 'must be an integer');
+        let n = 0;
+        let done;
+        do {
+            done = -64 <= val && val <= 63;
+            this.writeByte((done ? 0 : 1) << 7 | val & 0x7f);
+            n++;
+            val >>= 7;
+        } while (!done);
+        return n;
+    }
+
     writeString(s: string): number {
         return this.writeVarUint(s.length) +
             this.writeUint8Array(util.jsStringToUtf8Bytes(s));
@@ -190,10 +204,12 @@ export class Encoder {
     encodeStringTable(): number {
         const ws = this.encWriter;
         let written = 0;
+        let delta = new DeltaWriter(ws);
         this.stringTable.eachString((s: string) => {
             // TODO(dpc): Should this be length in characters or bytes?
             const len = s.length;
-            written += ws.writeVarUint(len);
+            // written += ws.writeVarUint(len);
+            written += delta.write(len);
         });
         this.stringTable.eachString((s: string) => {
             const encBytes = util.jsStringToUtf8Bytes(s);
