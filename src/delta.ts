@@ -11,7 +11,7 @@ export class DeltaWriter {
     }
 
     write(d: number): number {
-        assert(Math.floor(d) === d, 'must be an integer');
+        assert(Number.isInteger(d), 'must be an integer');
         let delta = d - this.last;
         this.last = d;
         return this.w.writeVarInt(delta);
@@ -44,7 +44,7 @@ export class MruDeltaWriter {
 
     writeUint(v: number): number {
         assert(0 <= v);
-        assert(Math.floor(v) === v);
+        assert(Number.isInteger(v));
         // Any bits not used to pick the MRU cell are used to store
         // deltas (or the start of a value.)
         const numDeltaBits = BITS_PER_BYTE - this.numCellBits;
