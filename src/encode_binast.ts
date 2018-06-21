@@ -1,5 +1,6 @@
 
 import * as assert from 'assert';
+import { Writable } from 'stream';
 
 import * as S from './schema';
 import * as util from './util';
@@ -18,7 +19,7 @@ export class FixedSizeBufStream implements WriteStream {
 
     cur: Uint8Array;
     curOffset: number;
-    
+
     constructor() {
         this.priors = new Array();
         this.priorSize = 0;
@@ -59,6 +60,23 @@ export class FixedSizeBufStream implements WriteStream {
             this.writeByte(b);
         }
         return bs.length;
+    }
+
+    /**
+     * Writes the accumulated output to a Writable.
+     * @returns The number of bytes written to `s`.
+     */
+    copyToWritable(s: Writable): number {
+        let bytes_written = 0;
+        for (const buffer of this.priors) {
+            s.write(buffer);
+            bytes_written += buffer.length;
+        }
+        if (this.curOffset) {
+            s.write(this.cur.slice(0, this.curOffset));
+            bytes_written += this.curOffset;
+        }
+        return bytes_written;
     }
 }
 
@@ -120,7 +138,7 @@ export class EncodingWriter {
 
     writeString(s: string): number {
         return this.writeVarUint(s.length) +
-               this.writeUint8Array(util.jsStringToUtf8Bytes(s));
+            this.writeUint8Array(util.jsStringToUtf8Bytes(s));
     }
 }
 
@@ -158,10 +176,11 @@ export class Encoder {
     readonly writeStream: WriteStream;
     readonly encWriter: EncodingWriter;
 
-    constructor(params: {script: S.Script,
-                         stringTable: StringTable,
-                         writeStream: WriteStream})
-    {
+    constructor(params: {
+        script: S.Script,
+        stringTable: StringTable,
+        writeStream: WriteStream
+    }) {
         this.script = params.script;
         this.stringTable = params.stringTable;
         this.writeStream = params.writeStream;

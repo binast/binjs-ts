@@ -1,14 +1,15 @@
-
-import * as process from 'process';
 import * as fs from 'fs';
+import * as process from 'process';
+import * as stream from 'stream';
 
-import {parseScript} from 'shift-parser';
+import { parseScript } from 'shift-parser';
 import * as S from './schema';
-import {Importer, StringRegistry} from './parse_js';
-import {FixedSizeBufStream, StringTable, Encoder} from './encode_binast';
+import { Importer, StringRegistry } from './parse_js';
+import { FixedSizeBufStream, StringTable, Encoder } from './encode_binast';
+import { Decoder } from './decode_binast';
 
-function encode(filename: string) {
-    const data: string = fs.readFileSync(filename, "utf8");
+function encode(input_filename: string, output_filename: string) {
+    const data: string = fs.readFileSync(input_filename, 'utf8');
     const json: any = parseScript(data);
     if (json.type !== 'Script') {
         throw new Error('Not a script');
@@ -22,20 +23,29 @@ function encode(filename: string) {
 
     const stringTable = new StringTable(strings);
     const writeStream = new FixedSizeBufStream();
-    const encoder = new Encoder({script, stringTable, writeStream});
+    const encoder = new Encoder({ script, stringTable, writeStream });
 
     const stSize = encoder.encodeStringTable();
-    console.log(`Encoded string table size=${stSize}`);
-    let stLength = 0;
-    strings.forEach((s, i) => {
-        const f = sr.frequencyOf(s);
-        console.log(`String [${i}] \`${s}\` - ${f}`);
-        stLength += (s.length + 1);
-    });
-    console.log(`String table length: ${stLength}`);
-    /*
+    //    console.log(`Encoded string table size=${stSize}`);
+    // let stLength = 0;
+    /*    strings.forEach((s, i) => {
+            const f = sr.frequencyOf(s);
+            console.log(`String [${i}] \`${s}\` - ${f}`);
+            stLength += (s.length + 1);
+        }); */
+    // console.log(`String table length: ${stLength}`);
     // console.log(JSON.stringify(script, null, 2));
-    */
+    // console.log(JSON.stringify(json, null, 2));
+
+    const output_writer: stream.Writable = fs.createWriteStream(output_filename);
+    writeStream.copyToWritable(output_writer);
+    output_writer.end();
+}
+
+function decode(filename: string) {
+    const buffer: Buffer = fs.readFileSync(filename);
+    console.log(buffer[0]);
+    console.log(buffer.length);
 }
 
 function main() {
@@ -45,8 +55,11 @@ function main() {
         process.exit(1);
     }
     if (args[0] === '--encode') {
-        console.log(`ENCODING: ${args[1]}`);
-        encode(args[1]);
+        const input_filename = args[1];
+        const output_filename = input_filename + '.binjs';
+        encode(input_filename, output_filename);
+    } else if (args[0] == '--decode') {
+        decode(args[1]);
     } else {
         console.error(`Unrecognized command: ${args[0]}`);
         process.exit(1);
