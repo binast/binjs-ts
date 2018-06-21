@@ -8,14 +8,21 @@ import { Importer, StringRegistry } from './parse_js';
 import { FixedSizeBufStream, StringTable, Encoder } from './encode_binast';
 import { Decoder } from './decode_binast';
 
-function encode(input_filename: string, output_filename: string) {
-    const data: string = fs.readFileSync(input_filename, 'utf8');
+interface EncodeOptions {
+    dumpAst: boolean;
+}
+
+function encode(inputFilename: string, outputFilename: string, options: EncodeOptions) {
+    const data: string = fs.readFileSync(inputFilename, 'utf8');
     const json: any = parseScript(data);
     if (json.type !== 'Script') {
         throw new Error('Not a script');
     }
     const importer: Importer = new Importer();
     const script: S.Script = importer.liftScript(json);
+    if (options.dumpAst) {
+        console.log(JSON.stringify(script, null, 2));
+    }
 
     const sr: StringRegistry = importer.strings;
     const strings = sr.stringsInFrequencyOrder();
@@ -26,20 +33,18 @@ function encode(input_filename: string, output_filename: string) {
     const encoder = new Encoder({ script, stringTable, writeStream });
 
     const stSize = encoder.encodeStringTable();
-    //    console.log(`Encoded string table size=${stSize}`);
+    //    console.log(`Encoded string table size = ${ stSize } `);
     // let stLength = 0;
     /*    strings.forEach((s, i) => {
             const f = sr.frequencyOf(s);
-            console.log(`String [${i}] \`${s}\` - ${f}`);
-            stLength += (s.length + 1);
-        }); */
+            console.log(`String[${ i }] \`${s}\` - ${f}`);
+    stLength += (s.length + 1);
+}); */
     // console.log(`String table length: ${stLength}`);
-    // console.log(JSON.stringify(script, null, 2));
-    // console.log(JSON.stringify(json, null, 2));
 
-    const output_writer: stream.Writable = fs.createWriteStream(output_filename);
-    writeStream.copyToWritable(output_writer);
-    output_writer.end();
+    const outputWriter: stream.Writable = fs.createWriteStream(outputFilename);
+    writeStream.copyToWritable(outputWriter);
+    outputWriter.end();
 }
 
 function decode(filename: string) {
@@ -57,7 +62,9 @@ function main() {
     if (args[0] === '--encode') {
         const input_filename = args[1];
         const output_filename = input_filename + '.binjs';
-        encode(input_filename, output_filename);
+        encode(input_filename, output_filename, {
+            dumpAst: args.indexOf('--dump-ast') !== -1,
+        });
     } else if (args[0] == '--decode') {
         decode(args[1]);
     } else {

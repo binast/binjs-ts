@@ -28,41 +28,41 @@ export enum CompoundAssignmentOperator {
 }
 
 export enum BinaryOperator {
-    Comma         = ",",
-    LogicalOr     = "||",
-    LogicalAnd    = "&&",
-    BitOr         = "|",
-    BitXor        = "^",
-    BitAnd        = "&",
-    Equal         = "==",
-    NotEqual      = "!=",
-    StrictEqual   = "===",
-    StrictNotEqual= "!==",
-    Less          = "<",
-    LessEqual     = "<=",
-    Greater       = ">",
-    GreaterEqual  = ">=",
-    In            = "in",
-    Instanceof    = "instanceof",
-    Shl           = "<<",
-    Shr           = ">>",
-    Sar           = ">>>",
-    Add           = "+",
-    Sub           = "-",
-    Mul           = "*",
-    Div           = "/",
-    Mod           = "%",
-    Pow           = "**",
+    Comma = ",",
+    LogicalOr = "||",
+    LogicalAnd = "&&",
+    BitOr = "|",
+    BitXor = "^",
+    BitAnd = "&",
+    Equal = "==",
+    NotEqual = "!=",
+    StrictEqual = "===",
+    StrictNotEqual = "!==",
+    Less = "<",
+    LessEqual = "<=",
+    Greater = ">",
+    GreaterEqual = ">=",
+    In = "in",
+    Instanceof = "instanceof",
+    Shl = "<<",
+    Shr = ">>",
+    Sar = ">>>",
+    Add = "+",
+    Sub = "-",
+    Mul = "*",
+    Div = "/",
+    Mod = "%",
+    Pow = "**",
 }
 
 export enum UnaryOperator {
-    Pos       = "+",
-    Neg       = "-",
+    Pos = "+",
+    Neg = "-",
     LogicalNot = "!",
-    BitNot    = "~",
-    Typeof    = "typeof",
-    Void      = "void",
-    Delete    = "delete"
+    BitNot = "~",
+    Typeof = "typeof",
+    Void = "void",
+    Delete = "delete"
 }
 
 export enum UpdateOperator {
@@ -82,10 +82,11 @@ export class AssertedBlockScope {
     readonly capturedNames: IdentifierList;
     readonly hasDirectEval: boolean;
 
-    constructor(params: {lexicallyDeclaredNames: IdentifierList,
-                         capturedNames: IdentifierList,
-                         hasDirectEval: boolean})
-    {
+    constructor(params: {
+        lexicallyDeclaredNames: IdentifierList,
+        capturedNames: IdentifierList,
+        hasDirectEval: boolean
+    }) {
         this.lexicallyDeclaredNames = params.lexicallyDeclaredNames;
         this.capturedNames = params.capturedNames;
         this.hasDirectEval = params.hasDirectEval;
@@ -101,11 +102,12 @@ export class AssertedVarScope {
     readonly capturedNames: IdentifierList;
     readonly hasDirectEval: boolean;
 
-    constructor(params: {lexicallyDeclaredNames: IdentifierList,
-                         varDeclaredNames: IdentifierList,
-                         capturedNames: IdentifierList,
-                         hasDirectEval: boolean})
-    {
+    constructor(params: {
+        lexicallyDeclaredNames: IdentifierList,
+        varDeclaredNames: IdentifierList,
+        capturedNames: IdentifierList,
+        hasDirectEval: boolean
+    }) {
         this.lexicallyDeclaredNames = params.lexicallyDeclaredNames;
         this.varDeclaredNames = params.varDeclaredNames;
         this.capturedNames = params.capturedNames;
@@ -121,10 +123,11 @@ export class AssertedParameterScope {
     readonly capturedNames: IdentifierList;
     readonly hasDirectEval: boolean;
 
-    constructor(params: {parameterNames: IdentifierList,
-                         capturedNames: IdentifierList,
-                         hasDirectEval: boolean})
-    {
+    constructor(params: {
+        parameterNames: IdentifierList,
+        capturedNames: IdentifierList,
+        hasDirectEval: boolean
+    }) {
         this.parameterNames = params.parameterNames;
         this.capturedNames = params.capturedNames;
         this.hasDirectEval = params.hasDirectEval;
@@ -136,7 +139,10 @@ export class AssertedParameterScope {
 //
 
 export abstract class BaseNode {
+    readonly type: string;
+
     constructor() {
+        this.type = this.constructor.name;
     }
 }
 
@@ -144,92 +150,92 @@ export type Program = (Script | Module);
 
 export type IterationStatement =
     (DoWhileStatement |
-     ForInStatement   |
-     ForOfStatement   |
-     ForStatement     |
-     WhileStatement);
+        ForInStatement |
+        ForOfStatement |
+        ForStatement |
+        WhileStatement);
 
 export type Statement =
-    (Block               |
-     BreakStatement      |
-     ContinueStatement   |
-     ClassDeclaration    |
-     DebuggerStatement   |
-     EmptyStatement      |
-     ExpressionStatement |
-     FunctionDeclaration |
-     IfStatement         |
-     IterationStatement  |
-     LabelledStatement   |
-     ReturnStatement     |
-     SwitchStatement     |
-     SwitchStatementWithDefault |
-     ThrowStatement      |
-     TryCatchStatement   |
-     TryFinallyStatement |
-     VariableDeclaration |
-     WithStatement);
+    (Block |
+        BreakStatement |
+        ContinueStatement |
+        ClassDeclaration |
+        DebuggerStatement |
+        EmptyStatement |
+        ExpressionStatement |
+        FunctionDeclaration |
+        IfStatement |
+        IterationStatement |
+        LabelledStatement |
+        ReturnStatement |
+        SwitchStatement |
+        SwitchStatementWithDefault |
+        ThrowStatement |
+        TryCatchStatement |
+        TryFinallyStatement |
+        VariableDeclaration |
+        WithStatement);
 
 export type Literal =
-    (LiteralBooleanExpression  |
-     LiteralInfinityExpression |
-     LiteralNullExpression     |
-     LiteralNumericExpression  |
-     LiteralStringExpression);
+    (LiteralBooleanExpression |
+        LiteralInfinityExpression |
+        LiteralNullExpression |
+        LiteralNumericExpression |
+        LiteralStringExpression);
 
 export type Expression =
-    (Literal                    |
-     LiteralRegExpExpression    |
-     ArrayExpression            |
-     ArrowExpression            |
-     AssignmentExpression       |
-     BinaryExpression           |
-     CallExpression             |
-     CompoundAssignmentExpression |
-     ComputedMemberExpression   |
-     ConditionalExpression      |
-     ClassExpression            |
-     FunctionExpression         |
-     IdentifierExpression       |
-     NewExpression              |
-     NewTargetExpression        |
-     ObjectExpression           |
-     UnaryExpression            |
-     StaticMemberExpression     |
-     TemplateExpression         |
-     ThisExpression             |
-     UpdateExpression           |
-     YieldExpression            |
-     YieldStarExpression        |
-     AwaitExpression)
+    (Literal |
+        LiteralRegExpExpression |
+        ArrayExpression |
+        ArrowExpression |
+        AssignmentExpression |
+        BinaryExpression |
+        CallExpression |
+        CompoundAssignmentExpression |
+        ComputedMemberExpression |
+        ConditionalExpression |
+        ClassExpression |
+        FunctionExpression |
+        IdentifierExpression |
+        NewExpression |
+        NewTargetExpression |
+        ObjectExpression |
+        UnaryExpression |
+        StaticMemberExpression |
+        TemplateExpression |
+        ThisExpression |
+        UpdateExpression |
+        YieldExpression |
+        YieldStarExpression |
+        AwaitExpression)
 
 export type PropertyName =
     (ComputedPropertyName |
-     LiteralPropertyName);
+        LiteralPropertyName);
 
 export type MethodDefinition = (Method | Getter | Setter);
 
 export type ObjectProperty =
-    (MethodDefinition   |
-     DataProperty       |
-     ShorthandProperty);
+    (MethodDefinition |
+        DataProperty |
+        ShorthandProperty);
 
 export type ExportDeclaration =
-    (ExportAllFrom  |
-     ExportFrom     |
-     ExportLocals   |
-     ExportDefault  |
-     Export);
+    (ExportAllFrom |
+        ExportFrom |
+        ExportLocals |
+        ExportDefault |
+        Export);
 
 export type ImportDeclaration = (ImportNamespace | Import);
 
 export type FunctionDeclaration =
     (EagerFunctionDeclaration |
-     SkippableFunctionDeclaration);
+        SkippableFunctionDeclaration);
 
 export type FunctionExpression =
     (EagerFunctionExpression |
-     SkippableFunctionExpression);
+        SkippableFunctionExpression);
 
 export type Method = (EagerMethod | SkippableMethod);
 
@@ -239,7 +245,7 @@ export type Setter = (EagerSetter | SkippableSetter);
 
 export type ArrowExpression =
     (EagerArrowExpression |
-     SkippableArrowExpression);
+        SkippableArrowExpression);
 
 
 //
@@ -249,7 +255,7 @@ export type ArrowExpression =
 export class BindingIdentifier extends BaseNode {
     readonly name: Identifier;
 
-    constructor(params: {name: Identifier}) {
+    constructor(params: { name: Identifier }) {
         super();
         this.name = params.name;
     }
@@ -259,18 +265,18 @@ export type BindingPattern = (ObjectBinding | ArrayBinding);
 export type Binding = (BindingPattern | BindingIdentifier);
 
 export type SimpleAssignmentTarget =
-    (AssignmentTargetIdentifier     |
-     ComputedMemberAssignmentTarget |
-     StaticMemberAssignmentTarget);
+    (AssignmentTargetIdentifier |
+        ComputedMemberAssignmentTarget |
+        StaticMemberAssignmentTarget);
 
 export type AssignmentTargetPattern =
     (ObjectAssignmentTarget |
-     ArrayAssignmentTarget);
+        ArrayAssignmentTarget);
 
 // `DestructuringAssignmentTarget`
 export type AssignmentTarget =
     (AssignmentTargetPattern |
-     SimpleAssignmentTarget);
+        SimpleAssignmentTarget);
 
 // `FormalParameter`
 export type Parameter = (Binding | BindingWithInitializer);
@@ -279,7 +285,7 @@ export class BindingWithInitializer extends BaseNode {
     readonly binding: Binding;
     readonly init: Expression;
 
-    constructor(params: {binding: Binding, init: Expression}) {
+    constructor(params: { binding: Binding, init: Expression }) {
         super();
         this.binding = params.binding;
         this.init = params.init;
@@ -289,7 +295,7 @@ export class BindingWithInitializer extends BaseNode {
 export class AssignmentTargetIdentifier extends BaseNode {
     readonly name: Identifier;
 
-    constructor(params: {name: Identifier}) {
+    constructor(params: { name: Identifier }) {
         super();
         this.name = params.name;
     }
@@ -301,9 +307,10 @@ export class ComputedMemberAssignmentTarget extends BaseNode {
     // The expression resolving to the name of the property to be accessed.
     readonly expression: Expression;
 
-    constructor(params: {object_: (Expression|Super),
-                         expression: Expression})
-    {
+    constructor(params: {
+        object_: (Expression | Super),
+        expression: Expression
+    }) {
         super();
         this.object_ = params.object_;
         this.expression = params.expression;
@@ -316,9 +323,10 @@ export class StaticMemberAssignmentTarget extends BaseNode {
     // The name of the property to be accessed.
     readonly property: IdentifierName;
 
-    constructor(params: {object_: (Expression | Super),
-                         property: IdentifierName})
-    {
+    constructor(params: {
+        object_: (Expression | Super),
+        property: IdentifierName
+    }) {
         super();
         this.object_ = params.object_;
         this.property = params.property;
@@ -346,7 +354,7 @@ export class BindingPropertyProperty extends BaseNode {
 
 export type BindingProperty =
     (BindingPropertyIdentifier |
-     BindingPropertyProperty);
+        BindingPropertyProperty);
 
 export class ObjectBinding extends BaseNode {
     readonly properties: Array<BindingProperty>;
@@ -355,16 +363,16 @@ export class ObjectBinding extends BaseNode {
 // This interface represents the case where the initializer is present in
 // `AssignmentElement :: DestructuringAssignmentTarget Initializer_opt`.
 export class AssignmentTargetWithInitializer extends BaseNode {
-  readonly binding: AssignmentTarget;
-  readonly init: Expression;
+    readonly binding: AssignmentTarget;
+    readonly init: Expression;
 }
 
 // `ArrayAssignmentPattern`
 export class ArrayAssignmentTarget extends BaseNode {
     // The elements of the array pattern; a null value represents an elision.
     readonly elements: Array<(AssignmentTarget |
-                              AssignmentTargetWithInitializer |
-                              null)>;
+        AssignmentTargetWithInitializer |
+        null)>;
     readonly rest: AssignmentTarget | null;
 }
 
@@ -382,7 +390,7 @@ export class AssignmentTargetPropertyProperty extends BaseNode {
 
 export type AssignmentTargetProperty =
     (AssignmentTargetPropertyIdentifier |
-     AssignmentTargetPropertyProperty);
+        AssignmentTargetPropertyProperty);
 
 
 // `ObjectAssignmentPattern`
@@ -432,7 +440,7 @@ export class Import extends BaseNode {
 export class ImportNamespace extends BaseNode {
     readonly moduleSpecifier: string;
     // `ImportedDefaultBinding`, if present.
-    readonly defaultBinding:  BindingIdentifier | null;
+    readonly defaultBinding: BindingIdentifier | null;
     readonly namespaceBinding: BindingIdentifier;
 }
 
@@ -464,8 +472,8 @@ export class ExportLocals extends BaseNode {
 // `export VariableStatement`, `export Declaration`
 export class Export extends BaseNode {
     readonly declaration: (FunctionDeclaration |
-                           ClassDeclaration |
-                           VariableDeclaration);
+        ClassDeclaration |
+        VariableDeclaration);
 }
 
 // `export default HoistableDeclaration`,
@@ -553,7 +561,7 @@ export class DataProperty extends BaseNode {
     // The `AssignmentExpression`.
     readonly expression: Expression;
 
-    constructor(params: {name: PropertyName, expression: Expression}) {
+    constructor(params: { name: PropertyName, expression: Expression }) {
         super();
         this.name = params.name;
         this.expression = params.expression;
@@ -574,7 +582,7 @@ export class ComputedPropertyName extends BaseNode {
 export class LiteralPropertyName extends BaseNode {
     readonly value: string;
 
-    constructor(params: {value: string}) {
+    constructor(params: { value: string }) {
         super();
         this.value = params.value;
     }
@@ -587,7 +595,7 @@ export class LiteralPropertyName extends BaseNode {
 export class LiteralBooleanExpression extends BaseNode {
     readonly value: boolean;
 
-    constructor(params: {value: boolean}) {
+    constructor(params: { value: boolean }) {
         super();
         this.value = params.value;
     }
@@ -603,7 +611,7 @@ export class LiteralNullExpression extends BaseNode { };
 export class LiteralNumericExpression extends BaseNode {
     readonly value: number;
 
-    constructor(params: {value: number}) {
+    constructor(params: { value: number }) {
         super();
         this.value = params.value;
     }
@@ -614,7 +622,7 @@ export class LiteralRegExpExpression extends BaseNode {
     readonly pattern: string;
     readonly flags: string;
 
-    constructor(params: {pattern: string, flags: string}) {
+    constructor(params: { pattern: string, flags: string }) {
         super();
         this.pattern = params.pattern;
         this.flags = params.flags;
@@ -625,7 +633,7 @@ export class LiteralRegExpExpression extends BaseNode {
 export class LiteralStringExpression extends BaseNode {
     readonly value: string;
 
-    constructor(params: {value: string}) {
+    constructor(params: { value: string }) {
         super();
         this.value = params.value;
     }
@@ -640,7 +648,7 @@ export class ArrayExpression extends BaseNode {
     // The elements of the array literal; a null value represents an elision.
     readonly elements: Array<ArrayElement>;
 
-    constructor(params: {elements:Array<ArrayElement>}) {
+    constructor(params: { elements: Array<ArrayElement> }) {
         super();
         this.elements = params.elements;
     }
@@ -669,9 +677,10 @@ export class AssignmentExpression extends BaseNode {
     // The `AssignmentExpression` following the `=`.
     readonly expression: Expression;
 
-    constructor(params: {binding: AssignmentTarget,
-                         expression: Expression})
-    {
+    constructor(params: {
+        binding: AssignmentTarget,
+        expression: Expression
+    }) {
         super();
         this.binding = params.binding;
         this.expression = params.expression;
@@ -696,10 +705,11 @@ export class BinaryExpression extends BaseNode {
     // The expression after the operator.
     readonly right: Expression;
 
-    constructor(params: {operator: BinaryOperator,
-                         right: Expression,
-                         left: Expression})
-    {
+    constructor(params: {
+        operator: BinaryOperator,
+        right: Expression,
+        left: Expression
+    }) {
         super();
         this.operator = params.operator;
         this.left = params.left;
@@ -711,9 +721,10 @@ export class CallExpression extends BaseNode {
     readonly callee: (Expression | Super);
     readonly arguments_: Arguments;
 
-    constructor(params: {callee:(Expression | Super),
-                         arguments_: Arguments})
-    {
+    constructor(params: {
+        callee: (Expression | Super),
+        arguments_: Arguments
+    }) {
         super();
         this.callee = params.callee;
         this.arguments_ = params.arguments_;
@@ -728,10 +739,11 @@ export class CompoundAssignmentExpression extends BaseNode {
     // The `AssignmentExpression`.
     readonly expression: Expression;
 
-    constructor(params: {operator: CompoundAssignmentOperator,
-                         binding: SimpleAssignmentTarget,
-                         expression: Expression})
-    {
+    constructor(params: {
+        operator: CompoundAssignmentOperator,
+        binding: SimpleAssignmentTarget,
+        expression: Expression
+    }) {
         super();
         this.operator = params.operator;
         this.binding = params.binding;
@@ -745,9 +757,10 @@ export class ComputedMemberExpression extends BaseNode {
     // The expression resolving to the name of the property to be accessed.
     readonly expression: Expression;
 
-    constructor(params: {object_: (Expression|Super),
-                         expression: Expression})
-    {
+    constructor(params: {
+        object_: (Expression | Super),
+        expression: Expression
+    }) {
         super();
         this.object_ = params.object_;
         this.expression = params.expression;
@@ -763,10 +776,11 @@ export class ConditionalExpression extends BaseNode {
     // The second `AssignmentExpression`.
     readonly alternate: Expression;
 
-    constructor(params: {test: Expression,
-                         consequent: Expression,
-                         alternate: Expression})
-    {
+    constructor(params: {
+        test: Expression,
+        consequent: Expression,
+        alternate: Expression
+    }) {
         super();
         this.test = params.test;
         this.consequent = params.consequent;
@@ -786,14 +800,15 @@ export class EagerFunctionExpression extends BaseNode {
     readonly params: FormalParameters;
     readonly body: FunctionBody;
 
-    constructor(params: {isAsync: boolean;
-                         isGenerator: boolean;
-                         name: BindingIdentifier;
-                         parameterScope: AssertedParameterScope | null;
-                         bodyScope: AssertedVarScope | null;
-                         params: FormalParameters;
-                         body: FunctionBody})
-    {
+    constructor(params: {
+        isAsync: boolean;
+        isGenerator: boolean;
+        name: BindingIdentifier;
+        parameterScope: AssertedParameterScope | null;
+        bodyScope: AssertedVarScope | null;
+        params: FormalParameters;
+        body: FunctionBody
+    }) {
         super();
         this.isAsync = params.isAsync;
         this.isGenerator = params.isGenerator;
@@ -814,7 +829,7 @@ export class SkippableFunctionExpression extends BaseNode {
 export class IdentifierExpression extends BaseNode {
     readonly name: Identifier;
 
-    constructor(params: {name: Identifier}) {
+    constructor(params: { name: Identifier }) {
         super();
         this.name = params.name;
     }
@@ -824,7 +839,7 @@ export class NewExpression extends BaseNode {
     readonly callee: Expression;
     readonly arguments_: Arguments;
 
-    constructor(params: {callee: Expression, arguments_: Arguments}) {
+    constructor(params: { callee: Expression, arguments_: Arguments }) {
         super();
         this.callee = params.callee;
         this.arguments_ = params.arguments_;
@@ -836,7 +851,7 @@ export class NewTargetExpression extends BaseNode { };
 export class ObjectExpression extends BaseNode {
     readonly properties: Array<ObjectProperty>;
 
-    constructor(params: {properties: Array<ObjectProperty>}) {
+    constructor(params: { properties: Array<ObjectProperty> }) {
         super();
         this.properties = params.properties;
     }
@@ -846,9 +861,10 @@ export class UnaryExpression extends BaseNode {
     readonly operator: UnaryOperator;
     readonly operand: Expression;
 
-    constructor(params: {operator: UnaryOperator,
-                         operand: Expression})
-    {
+    constructor(params: {
+        operator: UnaryOperator,
+        operand: Expression
+    }) {
         super();
         this.operator = params.operator;
         this.operand = params.operand;
@@ -861,8 +877,10 @@ export class StaticMemberExpression extends BaseNode {
     // The name of the property to be accessed.
     readonly property: IdentifierName;
 
-    constructor(params: {object_: (Expression | Super),
-                         property: IdentifierName}) {
+    constructor(params: {
+        object_: (Expression | Super),
+        property: IdentifierName
+    }) {
         super();
         this.object_ = params.object_;
         this.property = params.property;
@@ -895,10 +913,11 @@ export class UpdateExpression extends BaseNode {
     readonly operator: UpdateOperator;
     readonly operand: SimpleAssignmentTarget;
 
-    constructor(params: {isPrefix: boolean,
-                         operator: UpdateOperator,
-                         operand: SimpleAssignmentTarget})
-    {
+    constructor(params: {
+        isPrefix: boolean,
+        operator: UpdateOperator,
+        operand: SimpleAssignmentTarget
+    }) {
         super();
         this.isPrefix = params.isPrefix;
         this.operator = params.operator;
@@ -928,7 +947,7 @@ export class AwaitExpression extends BaseNode {
 export class BreakStatement extends BaseNode {
     readonly label: Label | null;
 
-    constructor(params: {label: Label|null}) {
+    constructor(params: { label: Label | null }) {
         super();
         this.label = params.label;
     }
@@ -937,7 +956,7 @@ export class BreakStatement extends BaseNode {
 export class ContinueStatement extends BaseNode {
     readonly label: Label | null;
 
-    constructor(params: {label: Label|null}) {
+    constructor(params: { label: Label | null }) {
         super();
         this.label = params.label;
     }
@@ -949,7 +968,7 @@ export class DoWhileStatement extends BaseNode {
     readonly test: Expression;
     readonly body: Statement;
 
-    constructor(params: {test: Expression, body: Statement}) {
+    constructor(params: { test: Expression, body: Statement }) {
         super();
         this.test = params.test;
         this.body = params.body;
@@ -961,7 +980,7 @@ export class EmptyStatement extends BaseNode { };
 export class ExpressionStatement extends BaseNode {
     readonly expression: Expression;
 
-    constructor(params: {expression: Expression}) {
+    constructor(params: { expression: Expression }) {
         super();
         this.expression = params.expression;
     }
@@ -971,9 +990,10 @@ export class ForInOfBinding extends BaseNode {
     readonly kind: VariableDeclarationKind;
     readonly binding: Binding;
 
-    constructor(params: {kind: VariableDeclarationKind,
-                         binding: Binding})
-    {
+    constructor(params: {
+        kind: VariableDeclarationKind,
+        binding: Binding
+    }) {
         super();
         this.kind = params.kind;
         this.binding = params.binding;
@@ -991,9 +1011,11 @@ export class ForInStatement extends BaseNode {
     readonly right: Expression;
     readonly body: Statement;
 
-    constructor(params: {left: (ForInOfBinding | AssignmentTarget),
-                         right: Expression,
-                         body: Statement}) {
+    constructor(params: {
+        left: (ForInOfBinding | AssignmentTarget),
+        right: Expression,
+        body: Statement
+    }) {
         super();
         this.left = params.left;
         this.right = params.right;
@@ -1023,11 +1045,12 @@ export class ForStatement extends BaseNode {
     readonly update: Expression | null;
     readonly body: Statement;
 
-    constructor(params: {init: (VariableDeclaration | Expression | null),
-                         test: Expression | null,
-                         update: Expression | null,
-                         body: Statement})
-    {
+    constructor(params: {
+        init: (VariableDeclaration | Expression | null),
+        test: Expression | null,
+        update: Expression | null,
+        body: Statement
+    }) {
         super();
         this.init = params.init;
         this.test = params.test;
@@ -1045,10 +1068,11 @@ export class IfStatement extends BaseNode {
     // The second `Statement`, if present.
     readonly alternate: Statement | null;
 
-    constructor(params: {test: Expression,
-                         consequent: Statement,
-                         alternate: Statement|null})
-    {
+    constructor(params: {
+        test: Expression,
+        consequent: Statement,
+        alternate: Statement | null
+    }) {
         super();
         this.test = params.test;
         this.consequent = params.consequent;
@@ -1064,7 +1088,7 @@ export class LabelledStatement extends BaseNode {
 export class ReturnStatement extends BaseNode {
     readonly expression: Expression | null;
 
-    constructor(params: {expression: Expression | null}) {
+    constructor(params: { expression: Expression | null }) {
         super();
         this.expression = this.expression;
     }
@@ -1076,9 +1100,10 @@ export class SwitchStatement extends BaseNode {
     readonly discriminant: Expression;
     readonly cases: Array<SwitchCase>;
 
-    constructor(params: {discriminant: Expression,
-                         cases: Array<SwitchCase>})
-    {
+    constructor(params: {
+        discriminant: Expression,
+        cases: Array<SwitchCase>
+    }) {
         super();
         this.discriminant = params.discriminant;
         this.cases = params.cases;
@@ -1096,11 +1121,12 @@ export class SwitchStatementWithDefault extends BaseNode {
     // The `CaseClauses` after the `DefaultClause`.
     readonly postDefaultCases: Array<SwitchCase>;
 
-    constructor(params: {discriminant: Expression,
-                         preDefaultCases: Array<SwitchCase>,
-                         defaultCase: SwitchDefault,
-                         postDefaultCases: Array<SwitchCase>})
-    {
+    constructor(params: {
+        discriminant: Expression,
+        preDefaultCases: Array<SwitchCase>,
+        defaultCase: SwitchDefault,
+        postDefaultCases: Array<SwitchCase>
+    }) {
         super();
         this.discriminant = params.discriminant;
         this.preDefaultCases = params.preDefaultCases;
@@ -1112,7 +1138,7 @@ export class SwitchStatementWithDefault extends BaseNode {
 export class ThrowStatement extends BaseNode {
     readonly expression: Expression;
 
-    constructor(params: {expression: Expression}) {
+    constructor(params: { expression: Expression }) {
         super();
         this.expression = params.expression;
     }
@@ -1123,7 +1149,7 @@ export class TryCatchStatement extends BaseNode {
     readonly body: Block;
     readonly catchClause: CatchClause;
 
-    constructor(params: {body: Block, catchClause: CatchClause}) {
+    constructor(params: { body: Block, catchClause: CatchClause }) {
         super();
         this.body = params.body;
         this.catchClause = params.catchClause;
@@ -1145,7 +1171,7 @@ export class WhileStatement extends BaseNode {
     readonly test: Expression;
     readonly body: Statement;
 
-    constructor(params: {test: Expression, body: Statement}) {
+    constructor(params: { test: Expression, body: Statement }) {
         super();
         this.test = params.test;
         this.body = params.body;
@@ -1164,9 +1190,10 @@ export class Block extends BaseNode {
     readonly scope: AssertedBlockScope | null;
     readonly statements: Array<Statement>;
 
-    constructor(params: {scope: AssertedBlockScope,
-                         statements: Array<Statement>})
-    {
+    constructor(params: {
+        scope: AssertedBlockScope,
+        statements: Array<Statement>
+    }) {
         super();
         this.scope = params.scope;
         this.statements = params.statements;
@@ -1181,10 +1208,11 @@ export class CatchClause extends BaseNode {
     readonly binding: Binding;
     readonly body: Block;
 
-    constructor(params: {bindingScope: AssertedParameterScope|null,
-                         binding: Binding,
-                         body: Block})
-    {
+    constructor(params: {
+        bindingScope: AssertedParameterScope | null,
+        binding: Binding,
+        body: Block
+    }) {
         super();
         this.bindingScope = params.bindingScope;
         this.binding = params.binding;
@@ -1196,7 +1224,7 @@ export class CatchClause extends BaseNode {
 export class Directive extends BaseNode {
     readonly rawValue: string;
 
-    constructor(params: {rawValue:string}) {
+    constructor(params: { rawValue: string }) {
         super();
         this.rawValue = params.rawValue;
     }
@@ -1206,9 +1234,10 @@ export class FormalParameters extends BaseNode {
     readonly items: Array<Parameter>;
     readonly rest: Binding | null;
 
-    constructor(params: {items: Array<Parameter>,
-                         rest: Binding | null})
-    {
+    constructor(params: {
+        items: Array<Parameter>,
+        rest: Binding | null
+    }) {
         super();
         this.items = params.items;
         this.rest = params.rest;
@@ -1219,9 +1248,10 @@ export class FunctionBody extends BaseNode {
     readonly directives: Array<Directive>;
     readonly statements: Array<Statement>;
 
-    constructor(params: {directives: Array<Directive>,
-                         statements: Array<Statement>})
-    {
+    constructor(params: {
+        directives: Array<Directive>,
+        statements: Array<Statement>
+    }) {
         super();
         this.directives = params.directives;
         this.statements = params.statements;
@@ -1242,14 +1272,15 @@ export class EagerFunctionDeclaration extends BaseNode {
     readonly params: FormalParameters;
     readonly body: FunctionBody;
 
-    constructor(params: {isAsync: boolean;
-                         isGenerator: boolean;
-                         name: BindingIdentifier;
-                         parameterScope: AssertedParameterScope | null;
-                         bodyScope: AssertedVarScope | null;
-                         params: FormalParameters;
-                         body: FunctionBody})
-    {
+    constructor(params: {
+        isAsync: boolean;
+        isGenerator: boolean;
+        name: BindingIdentifier;
+        parameterScope: AssertedParameterScope | null;
+        bodyScope: AssertedVarScope | null;
+        params: FormalParameters;
+        body: FunctionBody
+    }) {
         super();
         this.isAsync = params.isAsync;
         this.isGenerator = params.isGenerator;
@@ -1271,10 +1302,11 @@ export class Script extends BaseNode {
     readonly directives: Array<Directive>;
     readonly statements: Array<Statement>;
 
-    constructor(params: {scope:AssertedVarScope|null,
-                         directives: Array<Directive>,
-                         statements: Array<Statement>})
-    {
+    constructor(params: {
+        scope: AssertedVarScope | null,
+        directives: Array<Directive>,
+        statements: Array<Statement>
+    }) {
         super();
         this.scope = params.scope;
         this.directives = params.directives;
@@ -1294,9 +1326,10 @@ export class SwitchCase extends BaseNode {
     readonly test: Expression;
     readonly consequent: Array<Statement>;
 
-    constructor(params: {test: Expression,
-                         consequent: Array<Statement>})
-    {
+    constructor(params: {
+        test: Expression,
+        consequent: Array<Statement>
+    }) {
         super();
         this.test = params.test;
         this.consequent = params.consequent;
@@ -1307,7 +1340,7 @@ export class SwitchCase extends BaseNode {
 export class SwitchDefault extends BaseNode {
     readonly consequent: Array<Statement>;
 
-    constructor(params: {consequent: Array<Statement>}) {
+    constructor(params: { consequent: Array<Statement> }) {
         super();
         this.consequent = params.consequent;
     }
@@ -1323,9 +1356,10 @@ export class VariableDeclaration extends BaseNode {
     /* [NonEmpty] */
     readonly declarators: Array<VariableDeclarator>;
 
-    constructor(params: {kind: VariableDeclarationKind,
-                         declarators: Array<VariableDeclarator>})
-    {
+    constructor(params: {
+        kind: VariableDeclarationKind,
+        declarators: Array<VariableDeclarator>
+    }) {
         super();
         this.kind = params.kind;
         this.declarators = params.declarators;
@@ -1337,9 +1371,10 @@ export class VariableDeclarator extends BaseNode {
     readonly init: Expression | null;
 
 
-    constructor(params: {binding: Binding,
-                         init: (Expression | null)})
-    {
+    constructor(params: {
+        binding: Binding,
+        init: (Expression | null)
+    }) {
         super();
         this.binding = params.binding;
         this.init = params.init;
