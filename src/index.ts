@@ -25,7 +25,7 @@ function encode(inputFilename: string, outputFilename: string, options: EncodeOp
     }
 
     const sr: StringRegistry = importer.strings;
-    const strings = sr.stringsInFrequencyOrder();
+    const strings = sr.stringsInLexicographicOrder();
     console.debug("DONE LIFTING");
 
     const stringTable = new StringTable(strings);
