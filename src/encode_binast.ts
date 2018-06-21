@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import { Writable } from 'stream';
 
-import { MruDeltaWriter } from './delta';
+import { DeltaWriter } from './delta';
 import * as S from './schema';
 import * as util from './util';
 
@@ -203,7 +203,7 @@ export class Encoder {
     encodeStringTable(): number {
         const ws = this.encWriter;
         let written = 0;
-        let delta = new MruDeltaWriter(3, ws);
+        let delta = new DeltaWriter(ws);
         let stringData = [];
         this.stringTable.eachString((s: string) => {
             const encBytes = util.jsStringToUtf8Bytes(s);
@@ -211,7 +211,7 @@ export class Encoder {
             // Note, this is *bytes* and not characters. This lets the
             // decoder skip chunks of the string table if it wants.
             const len = encBytes.length;
-            written += delta.writeUint(len);
+            written += delta.write(len);
         });
         stringData.forEach((encBytes: Uint8Array) => {
             written += ws.writeUint8Array(encBytes);
