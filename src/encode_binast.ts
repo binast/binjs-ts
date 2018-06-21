@@ -191,9 +191,12 @@ export class Encoder {
         const ws = this.encWriter;
         let written = 0;
         this.stringTable.eachString((s: string) => {
+            // TODO(dpc): Should this be length in characters or bytes?
             const len = s.length;
-            const encBytes = util.jsStringToUtf8Bytes(s);
             written += ws.writeVarUint(len);
+        });
+        this.stringTable.eachString((s: string) => {
+            const encBytes = util.jsStringToUtf8Bytes(s);
             written += ws.writeUint8Array(encBytes);
         });
         return written;
