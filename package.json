@@ -13,7 +13,8 @@
   "license": "GPLv3",
   "dependencies": {
     "shift-parser": ">=5.2.4",
-    "typescript": ">=2.8.3"
+    "typescript": ">=2.8.3",
+    "webidl2": "^14.0.1"
   },
   "devDependencies": {
     "@types/node": "^10.1.3"

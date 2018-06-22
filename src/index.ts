@@ -8,20 +8,29 @@ import {Importer, Registry} from './parse_js';
 import {FixedSizeBufStream, Table, Encoder} from './encode_binast';
 
 function encode(filename: string) {
+    // Read and parse the script into Shift json.
     const data: string = fs.readFileSync(filename, "utf8");
     const json: any = parseScript(data);
     if (json.type !== 'Script') {
         throw new Error('Not a script');
     }
+
+    // Create importer and lift script into typed schema.
     const importer: Importer = new Importer();
     const script: S.Script = importer.liftScript(json);
 
+    // Create the string table.
     const sr: Registry<string> = importer.strings;
     const strings = sr.inFrequencyOrder();
+    const stringTable = new Table<string>(strings);
+
+    // Create the node kinds table.
+    const nr: Registry<object> = importer.nodes;
+    const nodes = nr.inFrequencyOrder();
+    const nodeKindTable = new Table<object>(nodes);
+
     console.debug("DONE LIFTING");
 
-    const stringTable = new Table<string>(strings);
-    const nodeKindTable = new Table<S.BaseNode>([]);
     const writeStream = new FixedSizeBufStream();
     const encoder = new Encoder({script,
                                  stringTable,
@@ -34,9 +43,14 @@ function encode(filename: string) {
     strings.forEach((s, i) => {
         const f = sr.frequencyOf(s);
         console.log(`String [${i}] \`${s}\` - ${f}`);
-        stLength += (s.length + 1);
     });
-    console.log(`String table length: ${stLength}`);
+
+    console.log(`----`);
+    console.log(`Grammar nodes used=${nodes.length}`);
+    nodes.forEach((n, i) => {
+        const f = nr.frequencyOf(n);
+        console.log(`Node [${i}] \`${n['name']}\` - ${f}`);
+    });
     /*
     // console.log(JSON.stringify(script, null, 2));
     */

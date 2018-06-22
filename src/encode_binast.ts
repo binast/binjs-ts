@@ -48,13 +48,10 @@ export class FixedSizeBufStream implements WriteStream {
         return 1;
     }
 
-    writeArray(bs: Array<number>) {
-        for (const b of bs) {
-            this.writeByte(b);
-        }
-        return bs.length;
+    writeArray(bs: Array<number>): number {
+        return this.writeUint8Array(new Uint8Array(bs));
     }
-    writeUint8Array(bs: Uint8Array) {
+    writeUint8Array(bs: Uint8Array): number {
         for (const b of bs) {
             this.writeByte(b);
         }
@@ -118,17 +115,17 @@ export class EncodingWriter {
         assert(uval < 0x10000000, `Value ${uval} out of range`);
     }
 
-    writeString(s: string): number {
-        return this.writeVarUint(s.length) +
-               this.writeUint8Array(util.jsStringToUtf8Bytes(s));
+    writeInlineString(s: string): number {
+        const bytes = util.jsStringToWtf8Bytes(s);
+        return this.writeVarUint(bytes.length) + this.writeArray(bytes);
     }
 }
 
 export class Table<T> {
-    // Array of all strings in order
+    // Array of all values in order
     readonly vals: Array<T>;
 
-    // Map of each string to its array index.
+    // Map of each value to its array index.
     readonly table: Map<T, number>;
 
     constructor(vals: Array<T>) {
@@ -151,6 +148,15 @@ export class Table<T> {
         this.vals.forEach(cb);
     }
 }
+
+export const MAGIC_STRING: string = 'BINJS';
+export const FORMAT_VERSION: number = 0;
+
+export const HEADER_STRINGS_TABLE: string = '[STRINGS]';
+export const HEADER_GRAMMAR_TABLE: string = '[GRAMMAR]';
+export const HEADER_TREE: string = '[TREE]';
+
+import {WriteStream} from './encode_binast';
 
 export class Encoder {
     readonly script: S.Script;
@@ -175,10 +181,7 @@ export class Encoder {
         const ws = this.encWriter;
         let written = 0;
         this.stringTable.each((s: string) => {
-            const len = s.length;
-            const encBytes = util.jsStringToUtf8Bytes(s);
-            written += ws.writeVarUint(len);
-            written += ws.writeUint8Array(encBytes);
+            written += this.encWriter.writeInlineString(s);
         });
         return written;
     }

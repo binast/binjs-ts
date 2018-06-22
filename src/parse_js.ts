@@ -393,6 +393,8 @@ export class Importer {
                 s => this.liftStatement(s));
 
             const scope = ss.extractVarScope();
+
+            this.nodes.note(S.Script);
             return new S.Script({scope, directives, statements});
         });
     }
@@ -401,6 +403,7 @@ export class Importer {
         assertNodeType(json, 'Directive');
         assertType(json.rawValue, 'string');
 
+        this.nodes.note(S.Directive);
         return new S.Directive({rawValue: json.rawValue as string});
     }
 
@@ -456,6 +459,7 @@ export class Importer {
         assertNodeType(json, 'ExpressionStatement');
 
         const expression = this.liftExpression(json.expression);
+        this.nodes.note(S.ExpressionStatement);
         return new S.ExpressionStatement({expression});
     }
     liftVariableDeclarationStatement(json: any): S.VariableDeclaration {
@@ -470,6 +474,7 @@ export class Importer {
             return this.liftVariableDeclarator(d)
         });
 
+        this.nodes.note(S.VariableDeclaration);
         return new S.VariableDeclaration({kind, declarators});
     }
     liftVariableDeclarationKind(kind: string): S.VariableDeclarationKind {
@@ -491,6 +496,7 @@ export class Importer {
         const binding = this.cx.bindVars(() => {
             return this.liftBinding(json.binding);
         });
+        this.nodes.note(S.VariableDeclarator);
         return new S.VariableDeclarator({binding, init});
     }
     liftBinding(json: any): S.Binding {
@@ -516,6 +522,7 @@ export class Importer {
 
         const name = this.liftIdentifier(json.name);
         this.cx.noteBoundName(name);
+        this.nodes.note(S.BindingIdentifier);
         return new S.BindingIdentifier({name});
     }
 
@@ -542,6 +549,7 @@ export class Importer {
                 const bodyScope = bs.extractVarScope();
 
                 // TODO: Emit an SkippableFunctionDeclaration when appropriate.
+                this.nodes.note(S.EagerFunctionDeclaration);
                 return new S.EagerFunctionDeclaration({
                     isAsync, isGenerator, name,
                     parameterScope, params,
@@ -559,6 +567,7 @@ export class Importer {
                 json.rest !== null ?
                     this.liftBinding(json.rest)
                   : null;
+            this.nodes.note(S.FormalParameters);
             return new S.FormalParameters({items, rest});
         });
     }
@@ -578,6 +587,7 @@ export class Importer {
 
         const directives = json.directives.map(d => this.liftDirective(d));
         const statements = json.statements.map(s => this.liftStatement(s));
+        this.nodes.note(S.FunctionBody);
         return new S.FunctionBody({directives, statements});
     }
 
@@ -591,6 +601,7 @@ export class Importer {
                 this.liftStatement(json.alternate)
               : null;
 
+        this.nodes.note(S.IfStatement);
         return new S.IfStatement({test, consequent, alternate});
     }
     liftWhileStatement(json: any): S.WhileStatement {
@@ -599,6 +610,7 @@ export class Importer {
         const test = this.liftExpression(json.test);
         const body = this.liftStatement(json.body);
 
+        this.nodes.note(S.WhileStatement);
         return new S.WhileStatement({test, body});
     }
     liftDoWhileStatement(json: any): S.DoWhileStatement {
@@ -607,6 +619,7 @@ export class Importer {
         const test = this.liftExpression(json.test);
         const body = this.liftStatement(json.body);
 
+        this.nodes.note(S.DoWhileStatement);
         return new S.DoWhileStatement({test, body});
     }
 
@@ -620,6 +633,7 @@ export class Importer {
         return this.cx.enterBlockScope(s => {
             const statements = json.statements.map(s => this.liftStatement(s));
             const scope = s.extractBlockScope();
+            this.nodes.note(S.Block);
             return new S.Block({scope, statements});
         });
     }
@@ -631,6 +645,7 @@ export class Importer {
                 this.liftExpression(json.expression)
               : null;
 
+        this.nodes.note(S.ReturnStatement);
         return new S.ReturnStatement({expression});
     }
     liftForInStatement(json: any): S.ForInStatement {
@@ -644,6 +659,7 @@ export class Importer {
             const left = this.liftForInStatementLeft(json.left);
             const body = this.liftStatement(json.body);
 
+            this.nodes.note(S.ForInStatement);
             return new S.ForInStatement({left, right, body});
         });
     }
@@ -670,6 +686,7 @@ export class Importer {
             const binding = this.cx.bindDeclKind(kind, () => {
                 return this.liftBinding(decl.binding);
             });
+            this.nodes.note(S.ForInOfBinding);
             return new S.ForInOfBinding({kind, binding});
         }
 
@@ -687,6 +704,7 @@ export class Importer {
                                             : null;
             const body = this.liftStatement(json.body);
 
+            this.nodes.note(S.ForStatement);
             return new S.ForStatement({init, test, update, body});
         });
     }
@@ -714,6 +732,7 @@ export class Importer {
 
         const label = this.liftLabel(json.label);
 
+        this.nodes.note(S.BreakStatement);
         return new S.BreakStatement({label});
     }
     liftLabel(label: string|null): S.Label|null {
@@ -728,6 +747,7 @@ export class Importer {
 
         const label = this.liftLabel(json.label);
 
+        this.nodes.note(S.ContinueStatement);
         return new S.ContinueStatement({label});
     }
     liftTryCatchStatement(json: any): S.TryCatchStatement {
@@ -736,6 +756,7 @@ export class Importer {
         const body = this.liftBlock(json.body);
         const catchClause = this.liftCatchClause(json.catchClause);
 
+        this.nodes.note(S.TryCatchStatement);
         return new S.TryCatchStatement({body, catchClause});
     }
     liftCatchClause(json: any): S.CatchClause {
@@ -747,6 +768,7 @@ export class Importer {
             });
             const body = this.liftBlock(json.body);
             const bindingScope = bs.extractParameterScope();
+            this.nodes.note(S.CatchClause);
             return new S.CatchClause({bindingScope, binding, body});
         });
     }
@@ -760,6 +782,7 @@ export class Importer {
 
         const expression = this.liftExpression(json.expression);
 
+        this.nodes.note(S.ThrowStatement);
         return new S.ThrowStatement({expression});
     }
     liftSwitchStatement(json: any): S.SwitchStatement {
@@ -767,6 +790,7 @@ export class Importer {
 
         const discriminant = this.liftExpression(json.discriminant);
         const cases = json.cases.map(c => this.liftSwitchCase(c));
+        this.nodes.note(S.SwitchStatement);
         return new S.SwitchStatement({discriminant, cases});
     }
     liftSwitchStatementWithDefault(json: any): S.SwitchStatementWithDefault {
@@ -781,6 +805,7 @@ export class Importer {
             return this.liftSwitchCase(c);
         });
 
+        this.nodes.note(S.SwitchStatementWithDefault);
         return new S.SwitchStatementWithDefault({
             discriminant, preDefaultCases, defaultCase, postDefaultCases
         });
@@ -791,6 +816,7 @@ export class Importer {
         const test = this.liftExpression(json.test);
         const consequent = json.consequent.map(c => this.liftStatement(c));
 
+        this.nodes.note(S.SwitchCase);
         return new S.SwitchCase({test, consequent});
     }
     liftSwitchDefault(json: any): S.SwitchDefault {
@@ -798,6 +824,7 @@ export class Importer {
 
         const consequent = json.consequent.map(c => this.liftStatement(c));
 
+        this.nodes.note(S.SwitchDefault);
         return new S.SwitchDefault({consequent});
     }
 
@@ -878,6 +905,7 @@ export class Importer {
         const callee = this.liftExpression(json.callee);
         const arguments_ = (json.arguments as Array<any>).map(
             s => this.liftExpression(s));
+        this.nodes.note(S.CallExpression);
         return new S.CallExpression({callee, arguments_});
     }
     liftStaticMemberExpression(json: any): S.StaticMemberExpression {
@@ -887,6 +915,7 @@ export class Importer {
         // TODO: Check for |super| in object_.
         const object_ = this.liftExpression(json.object);
         const property = json.property;
+        this.nodes.note(S.StaticMemberExpression);
         return new S.StaticMemberExpression({object_, property});
     }
     liftIdentifierExpression(json: any): S.IdentifierExpression {
@@ -898,6 +927,7 @@ export class Importer {
         // Note the use of the identifier.
         this.cx.noteUseName(name);
 
+        this.nodes.note(S.IdentifierExpression);
         return new S.IdentifierExpression({name});
     }
     liftLiteralStringExpression(json: any): S.LiteralStringExpression {
@@ -907,6 +937,7 @@ export class Importer {
         const value = json.value as string;
         this.strings.note(value);
 
+        this.nodes.note(S.LiteralStringExpression);
         return new S.LiteralStringExpression({value});
     }
     liftLiteralBooleanExpression(json: any): S.LiteralBooleanExpression {
@@ -915,6 +946,7 @@ export class Importer {
 
         const value = json.value as boolean;
 
+        this.nodes.note(S.LiteralBooleanExpression);
         return new S.LiteralBooleanExpression({value});
     }
     liftObjectExpression(json: any): S.ObjectExpression {
@@ -924,6 +956,7 @@ export class Importer {
             return this.liftObjectProperty(p);
         });
 
+        this.nodes.note(S.ObjectExpression);
         return new S.ObjectExpression({properties});
     }
 
@@ -944,6 +977,7 @@ export class Importer {
         const name = this.liftPropertyName(json.name);
         const expression = this.liftExpression(json.expression);
 
+        this.nodes.note(S.DataProperty);
         return new S.DataProperty({name, expression});
     }
 
@@ -952,6 +986,7 @@ export class Importer {
 
         const elements = json.elements.map(e => this.liftArrayElement(e));
 
+        this.nodes.note(S.ArrayExpression);
         return new S.ArrayExpression({elements});
     }
     liftArrayElement(json: any): S.ArrayElement {
@@ -990,6 +1025,7 @@ export class Importer {
                 const bodyScope = bs.extractVarScope();
 
                 // TODO: Emit a SkippableFunctionExpression when appropriate.
+                this.nodes.note(S.EagerFunctionExpression);
                 return new S.EagerFunctionExpression({
                     isAsync, isGenerator, name,
                     parameterScope, params,
@@ -1004,6 +1040,7 @@ export class Importer {
         const binding = this.liftAssignmentTarget(json.binding);
         const expression = this.liftExpression(json.expression);
 
+        this.nodes.note(S.AssignmentExpression);
         return new S.AssignmentExpression({binding, expression});
     }
     liftAssignmentTarget(json: any): S.AssignmentTarget {
@@ -1048,6 +1085,7 @@ export class Importer {
         // Note the use of the identifier.
         this.cx.noteUseName(name);
 
+        this.nodes.note(S.AssignmentTargetIdentifier);
         return new S.AssignmentTargetIdentifier({name});
     }
     liftStaticMemberAssignmentTarget(json: any)
@@ -1059,6 +1097,7 @@ export class Importer {
         const object_ = this.liftExpressionOrSuper(json.object);
         const property = this.liftIdentifier(json.property);
 
+        this.nodes.note(S.StaticMemberAssignmentTarget);
         return new S.StaticMemberAssignmentTarget({object_, property});
     }
 
@@ -1070,11 +1109,13 @@ export class Importer {
         const object_ = this.liftExpressionOrSuper(json.object);
         const expression = this.liftExpression(json.expression);
 
+        this.nodes.note(S.ComputedMemberAssignmentTarget);
         return new S.ComputedMemberAssignmentTarget({object_, expression});
     }
 
     liftLiteralNullExpression(json: any): S.LiteralNullExpression {
         assertNodeType(json, 'LiteralNullExpression');
+        this.nodes.note(S.LiteralNullExpression);
         return new S.LiteralNullExpression();
     }
     liftUnaryExpression(json: any): S.UnaryExpression {
@@ -1084,6 +1125,7 @@ export class Importer {
         const operator = json.operator as S.UnaryOperator;
         const operand = this.liftExpression(json.operand);
 
+        this.nodes.note(S.UnaryExpression);
         return new S.UnaryExpression({operator, operand});
     }
     liftBinaryExpression(json: any): S.BinaryExpression {
@@ -1094,6 +1136,7 @@ export class Importer {
         const left = this.liftExpression(json.left);
         const right = this.liftExpression(json.right);
 
+        this.nodes.note(S.BinaryExpression);
         return new S.BinaryExpression({operator, left, right});
     }
     liftComputedMemberExpression(json: any): S.ComputedMemberExpression {
@@ -1102,6 +1145,7 @@ export class Importer {
         const object_ = this.liftExpressionOrSuper(json.object);
         const expression = this.liftExpression(json.expression);
 
+        this.nodes.note(S.ComputedMemberExpression);
         return new S.ComputedMemberExpression({object_, expression});
     }
     liftLiteralNumericExpression(json: any): S.LiteralNumericExpression {
@@ -1109,6 +1153,7 @@ export class Importer {
         assertType(json.value, 'number');
 
         const value = json.value as number;
+        this.nodes.note(S.LiteralNumericExpression);
         return new S.LiteralNumericExpression({value});
     }
     liftLiteralRegExpExpression(json: any): S.LiteralRegExpExpression {
@@ -1130,6 +1175,7 @@ export class Importer {
         if (json.sticky) { flagArray.push('y'); }
         const flags = flagArray.join();
 
+        this.nodes.note(S.LiteralRegExpExpression);
         return new S.LiteralRegExpExpression({pattern, flags});
     }
     liftCompoundAssignmentExpression(json: any)
@@ -1142,6 +1188,7 @@ export class Importer {
         const binding = this.liftSimpleAssignmentTarget(json.binding);
         const expression = this.liftExpression(json.expression);
 
+        this.nodes.note(S.CompoundAssignmentExpression);
         return new S.CompoundAssignmentExpression({
             operator, binding, expression
         });
@@ -1155,6 +1202,7 @@ export class Importer {
         const operator = json.operator as S.UpdateOperator;
         const operand = this.liftSimpleAssignmentTarget(json.operand);
 
+        this.nodes.note(S.UpdateExpression);
         return new S.UpdateExpression({isPrefix, operator, operand});
     }
     liftNewExpression(json: any): S.NewExpression {
@@ -1163,10 +1211,12 @@ export class Importer {
         const callee = this.liftExpression(json.callee);
         const arguments_ = json.arguments.map(s => this.liftExpression(s));
 
+        this.nodes.note(S.NewExpression);
         return new S.NewExpression({callee, arguments_});
     }
     liftThisExpression(json: any): S.ThisExpression {
         assertNodeType(json, 'ThisExpression');
+        this.nodes.note(S.ThisExpression);
         return new S.ThisExpression();
     }
     liftConditionalExpression(json: any): S.ConditionalExpression {
@@ -1176,6 +1226,7 @@ export class Importer {
         const consequent = this.liftExpression(json.consequent);
         const alternate = this.liftExpression(json.alternate);
 
+        this.nodes.note(S.ConditionalExpression);
         return new S.ConditionalExpression({test, consequent, alternate});
     }
 
@@ -1194,6 +1245,7 @@ export class Importer {
 
         const value = json.value as string;
 
+        this.nodes.note(S.LiteralPropertyName);
         return new S.LiteralPropertyName({value});
     }
 }
