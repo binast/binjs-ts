@@ -2,11 +2,12 @@ import * as fs from 'fs';
 import * as process from 'process';
 import * as stream from 'stream';
 
-import { parseScript } from 'shift-parser';
 import * as S from './schema';
-import { Importer, StringRegistry } from './parse_js';
-import { FixedSizeBufStream, StringTable, Encoder } from './encode_binast';
+import { ArrayStream } from './io';
 import { Decoder } from './decode_binast';
+import { FixedSizeBufStream, StringTable, Encoder } from './encode_binast';
+import { Importer, StringRegistry } from './parse_js';
+import { parseScript } from 'shift-parser';
 
 interface EncodeOptions {
     dumpAst: boolean;
@@ -29,6 +30,7 @@ function encode(inputFilename: string, outputFilename: string, options: EncodeOp
     const writeStream = new FixedSizeBufStream();
     const encoder = new Encoder({ script, stringTable, writeStream });
     encoder.encodeStringTable();
+    encoder.encodeGrammar();
 
     const outputWriter: stream.Writable = fs.createWriteStream(outputFilename);
     writeStream.copyToWritable(outputWriter);
@@ -37,8 +39,10 @@ function encode(inputFilename: string, outputFilename: string, options: EncodeOp
 
 function decode(filename: string) {
     const buffer: Buffer = fs.readFileSync(filename);
-    console.log(buffer[0]);
-    console.log(buffer.length);
+    const decoder = new Decoder(new ArrayStream(buffer));
+    const strings = decoder.decodeStringTable();
+    // TODO(dpc): Read the grammar table.
+    console.log(strings);
 }
 
 function main() {

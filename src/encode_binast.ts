@@ -1,6 +1,7 @@
 import * as assert from 'assert';
 import { Writable } from 'stream';
 
+import { GrammarRecoverer } from './grammar';
 import * as S from './schema';
 import * as util from './util';
 
@@ -8,6 +9,8 @@ export interface WriteStream {
     writeByte(b: number): number;
     writeArray(bs: Array<number>): number;
     writeUint8Array(bs: Uint8Array): number;
+    // Writes a string *without a length prefix*.
+    writeUtf8String(s: string): number;
 }
 
 const FIXED_SIZE: number = 0x10000;
@@ -76,6 +79,10 @@ export class FixedSizeBufStream implements WriteStream {
             bytes_written += this.curOffset;
         }
         return bytes_written;
+    }
+
+    writeUtf8String(s: string): number {
+        return this.writeUint8Array(util.jsStringToUtf8Bytes(s));
     }
 }
 
@@ -148,9 +155,8 @@ export class EncodingWriter {
         return n;
     }
 
-    writeString(s: string): number {
-        return this.writeVarUint(s.length) +
-            this.writeUint8Array(util.jsStringToUtf8Bytes(s));
+    writeUtf8String(s: string): number {
+        return this.stream.writeUtf8String(s);
     }
 }
 
@@ -202,6 +208,7 @@ export class Encoder {
     encodeStringTable(): number {
         const ws = this.encWriter;
         let written = 0;
+        written += ws.writeVarUint(this.stringTable.strings.length);
         let stringData = [];
         this.stringTable.eachString((s: string) => {
             const encBytes = util.jsStringToUtf8Bytes(s);
@@ -215,5 +222,13 @@ export class Encoder {
             written += ws.writeUint8Array(encBytes);
         });
         return written;
+    }
+
+    // TODO(dpc): Make this use string references.
+    encodeGrammar(): number {
+        let written = 0;
+        let grammar = new GrammarRecoverer();
+        grammar.visit(this.script);
+        return this.writeStream.writeUtf8String(JSON.stringify(grammar.rules));
     }
 }

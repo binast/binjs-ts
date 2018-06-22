@@ -139,11 +139,6 @@ export class AssertedParameterScope {
 //
 
 export abstract class BaseNode {
-    readonly type: string;
-
-    constructor() {
-        this.type = this.constructor.name;
-    }
 }
 
 export type Program = (Script | Module);
