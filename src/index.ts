@@ -29,8 +29,7 @@ function encode(inputFilename: string, outputFilename: string, options: EncodeOp
     const stringTable = new StringTable(sr.stringsInLexicographicOrder());
     const writeStream = new FixedSizeBufStream();
     const encoder = new Encoder({ script, stringTable, writeStream });
-    encoder.encodeStringTable();
-    encoder.encodeGrammar();
+    encoder.encode();
 
     const outputWriter: stream.Writable = fs.createWriteStream(outputFilename);
     writeStream.copyToWritable(outputWriter);
@@ -40,9 +39,8 @@ function encode(inputFilename: string, outputFilename: string, options: EncodeOp
 function decode(filename: string) {
     const buffer: Buffer = fs.readFileSync(filename);
     const decoder = new Decoder(new ArrayStream(buffer));
-    const strings = decoder.decodeStringTable();
-    // TODO(dpc): Read the grammar table.
-    console.log(strings);
+    decoder.decode();
+    console.log(decoder.strings);
 }
 
 function main() {

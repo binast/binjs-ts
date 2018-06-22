@@ -1,9 +1,9 @@
 import * as assert from 'assert';
 import { Writable } from 'stream';
+import { TextDecoder, TextEncoder } from 'util';
 
 import { GrammarRecoverer } from './grammar';
 import * as S from './schema';
-import * as util from './util';
 
 export interface WriteStream {
     writeByte(b: number): number;
@@ -43,7 +43,7 @@ export class FixedSizeBufStream implements WriteStream {
         // assert((0 <= b) && (b < 256));
         const idx = this.curOffset++;
         this.cur[idx] = b;
-        if (idx == this.cur.length) {
+        if (this.curOffset == this.cur.length) {
             this.priors.push(this.cur);
             this.priorSize += this.cur.length;
             this.resetCurrent();
@@ -82,7 +82,7 @@ export class FixedSizeBufStream implements WriteStream {
     }
 
     writeUtf8String(s: string): number {
-        return this.writeUint8Array(util.jsStringToUtf8Bytes(s));
+        return this.writeUint8Array(new TextEncoder().encode(s));
     }
 }
 
@@ -105,41 +105,16 @@ export class EncodingWriter {
     }
 
     writeVarUint(uval: number): number {
-        // ASSERT: Number.isInteger(uval);
-        // ASSERT: uval >= 0;
-        // ASSERT: uval <= 0xFFFFFFFF
-
-        // 7-bit number.
-        if (uval < 0x80) {
-            this.writeByte(uval);
-            return 1;
-        }
-
-        // 14-bit number.
-        if (uval < 0x4000) {
-            this.writeByte(uval & 0x7F);
-            this.writeByte((uval >> 7) & 0x7F);
-            return 2;
-        }
-
-        // 21-bit number.
-        if (uval < 0x200000) {
-            this.writeByte(uval & 0x7F);
-            this.writeByte((uval >> 7) & 0x7F);
-            this.writeByte((uval >> 14) & 0x7F);
-            return 3;
-        }
-
-        // 28-bit number.
-        if (uval < 0x10000000) {
-            this.writeByte(uval & 0x7F);
-            this.writeByte((uval >> 7) & 0x7F);
-            this.writeByte((uval >> 14) & 0x7F);
-            this.writeByte((uval >> 21) & 0x7F);
-            return 4;
-        }
-
-        assert(uval < 0x10000000, `Value ${uval} out of range`);
+        assert(Number.isInteger(uval));
+        assert(0 <= uval);
+        let n = 0;
+        do {
+            let byte = uval & 0x7f;
+            uval >>= 7;
+            byte |= uval ? 0x80 : 0;
+            n += this.writeByte(byte);
+        } while (uval);
+        return n;
     }
 
     writeVarInt(val: number): number {
@@ -205,13 +180,21 @@ export class Encoder {
         this.encWriter = new EncodingWriter(this.writeStream);
     }
 
+    encode(): number {
+        let n = 0;
+        n += this.encodeStringTable();
+        n += this.encodeGrammar();
+        return n;
+    }
+
     encodeStringTable(): number {
         const ws = this.encWriter;
         let written = 0;
         written += ws.writeVarUint(this.stringTable.strings.length);
         let stringData = [];
         this.stringTable.eachString((s: string) => {
-            const encBytes = util.jsStringToUtf8Bytes(s);
+            const encBytes = new TextEncoder().encode(s);
+            assert(new TextDecoder('utf-8').decode(encBytes) === s);
             stringData.push(encBytes);
             // Note, this is *bytes* and not characters. This lets the
             // decoder skip chunks of the string table if it wants.
@@ -226,9 +209,13 @@ export class Encoder {
 
     // TODO(dpc): Make this use string references.
     encodeGrammar(): number {
-        let written = 0;
         let grammar = new GrammarRecoverer();
         grammar.visit(this.script);
-        return this.writeStream.writeUtf8String(JSON.stringify(grammar.rules));
+        let bytes = new TextEncoder().encode(JSON.stringify(grammar.rules));
+
+        let written = 0;
+        written += this.encWriter.writeVarUint(bytes.length);
+        written += this.encWriter.writeUint8Array(bytes);
+        return written;
     }
 }

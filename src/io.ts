@@ -1,8 +1,10 @@
 import * as assert from 'assert';
+import { TextDecoder } from 'util';
 
 export interface ReadStream {
     readByte(): number;
     readBytes(n: number): Uint8Array;
+    readUtf8Bytes(n: number): string;
     readVarUint(): number;
 }
 
@@ -31,6 +33,12 @@ export class ArrayStream {
         }
         this.offset += n;
         return result;
+    }
+
+    readUtf8Bytes(n: number): string {
+        assert(Number.isInteger(n));
+        assert(0 <= n);
+        return new TextDecoder('utf-8').decode(this.readBytes(n));
     }
 
     readVarUint(): number {

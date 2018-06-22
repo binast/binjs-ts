@@ -4,12 +4,19 @@ import { ReadStream } from './io';
 
 export class Decoder {
     readonly r: ReadStream;
+    strings: string[];
+    grammar: Map<string, string[]>;
 
     constructor(readStream: ReadStream) {
         this.r = readStream;
     }
 
-    decodeStringTable(): Array<string> {
+    decode() {
+        this.strings = this.decodeStringTable();
+        this.grammar = this.decodeGrammar();
+    }
+
+    decodeStringTable(): string[] {
         // Number of strings.
         let n = this.r.readVarUint();
 
@@ -27,5 +34,10 @@ export class Decoder {
         }
 
         return strings;
+    }
+
+    decodeGrammar(): Map<string, string[]> {
+        let length = this.r.readVarUint();
+        return JSON.parse(this.r.readUtf8Bytes(length));
     }
 }
