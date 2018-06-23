@@ -19,17 +19,19 @@ function encode(filename: string) {
     const importer: Importer = new Importer();
     const script: S.Script = importer.liftScript(json);
 
+    console.debug("DONE LIFTING");
+
     // Create the string table.
     const sr: Registry<string> = importer.strings;
     const strings = sr.inFrequencyOrder();
     const stringTable = new Table<string>(strings);
 
     // Create the node kinds table.
-    const nr: Registry<object> = importer.nodes;
-    const nodes = nr.inFrequencyOrder();
-    const nodeKindTable = new Table<object>(nodes);
-
-    console.debug("DONE LIFTING");
+    const nr: Registry<object|string> = importer.nodes;
+    const nodes: Array<object|string> = nr.inFrequencyOrder();
+    const staticTypes = ['string', 'integer', 'boolean', 'null'];
+    nodes.splice(0, 0, ...staticTypes);
+    const nodeKindTable = new Table<object|string>(nodes);
 
     const writeStream = new FixedSizeBufStream();
     const encoder = new Encoder({script,
@@ -48,9 +50,15 @@ function encode(filename: string) {
     console.log(`----`);
     console.log(`Grammar nodes used=${nodes.length}`);
     nodes.forEach((n, i) => {
-        const f = nr.frequencyOf(n);
-        console.log(`Node [${i}] \`${n['name']}\` - ${f}`);
+        if (typeof(n) === 'string') {
+            console.log(`Primitive [${i}] \`${n}\``);
+        } else {
+            const f = nr.frequencyOf(n);
+            console.log(`Node [${i}] \`${n['name']}\` - ${f}`);
+        }
     });
+
+    encoder.encodeScript(script);
     /*
     // console.log(JSON.stringify(script, null, 2));
     */

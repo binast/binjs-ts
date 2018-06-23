@@ -638,7 +638,7 @@ export class ExportLocalSpecifier extends BaseNode {
     readonly exportedName: IdentifierName | null;
 
     static scan(h: ScanHandler) {
-        h.field('name');
+        h.child('name');
         h.field('exportedName');
     }
 }
@@ -964,7 +964,7 @@ export class CallExpression extends BaseNode {
 
     static scan(h: ScanHandler) {
         h.child('callee');
-        h.child('arguments_');
+        h.childArray('arguments_');
     }
 }
 
@@ -1115,7 +1115,7 @@ export class NewExpression extends BaseNode {
 
     static scan(h: ScanHandler) {
         h.child('callee');
-        h.child('arguments_');
+        h.childArray('arguments_');
     }
 }
 
@@ -1169,7 +1169,7 @@ export class StaticMemberExpression extends BaseNode {
 
     static scan(h: ScanHandler) {
         h.child('object_');
-        h.child('property');
+        h.field('property');
     }
 }
 
@@ -1449,7 +1449,7 @@ export class ReturnStatement extends BaseNode {
 
     constructor(params: {expression: Expression | null}) {
         super();
-        this.expression = this.expression;
+        this.expression = params.expression;
     }
 
     static scan(h: ScanHandler) {
@@ -1503,7 +1503,7 @@ export class SwitchStatementWithDefault extends BaseNode {
     static scan(h: ScanHandler) {
         h.child('discriminant');
         h.childArray('preDefaultCases');
-        h.child('defaultCases');
+        h.child('defaultCase');
         h.childArray('postDefaultCases');
     }
 }
@@ -1672,7 +1672,7 @@ export class FunctionBody extends BaseNode {
     }
 
     static scan(h: ScanHandler) {
-        h.childArray('items');
+        h.childArray('directives');
         h.childArray('statements');
     }
 }

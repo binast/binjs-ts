@@ -895,7 +895,7 @@ export class Importer {
           case 'ConditionalExpression':
             return this.liftConditionalExpression(json);
           default:
-            return null;
+            throw new Error("Unrecognized expression");
         }
     }
     liftCallExpression(json: any): S.CallExpression {

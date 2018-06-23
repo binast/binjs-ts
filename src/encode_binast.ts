@@ -161,13 +161,14 @@ import {WriteStream} from './encode_binast';
 export class Encoder {
     readonly script: S.Script;
     readonly stringTable: Table<string>;
-    readonly nodeKindTable: Table<S.BaseNode>;
+    readonly nodeKindTable: Table<object|string>;
     readonly writeStream: WriteStream;
     readonly encWriter: EncodingWriter;
+    tabbing: number;
 
     constructor(params: {script: S.Script,
                          stringTable: Table<string>,
-                         nodeKindTable: Table<S.BaseNode>,
+                         nodeKindTable: Table<object|string>,
                          writeStream: WriteStream})
     {
         this.script = params.script;
@@ -175,6 +176,7 @@ export class Encoder {
         this.nodeKindTable = params.nodeKindTable;
         this.writeStream = params.writeStream;
         this.encWriter = new EncodingWriter(this.writeStream);
+        this.tabbing = 0;
     }
 
     encodeStringTable(): number {
@@ -185,4 +187,62 @@ export class Encoder {
         });
         return written;
     }
+
+    encodeScript(script: S.Script): number {
+        return this.encodeNodeSubtreeText(script);
+    }
+
+    logTabbed(s) {
+        console.log(('   ').repeat(this.tabbing) + s);
+    }
+    encodeNodeSubtreeText(node: S.BaseNode|null): number {
+        if (node !== null && !(node instanceof S.BaseNode)) {
+            console.log("GOT BAD NODE: " + JSON.stringify(node));
+            throw new Error("ERROR");
+        }
+        assert(!Array.isArray(node));
+
+        const self = this;
+
+        if (node === null) {
+            self.logTabbed("NULL");
+            return;
+        }
+
+        // Look up the node constructor's index.
+        const kind = node.constructor;
+        const idx = self.nodeKindTable.index(kind);
+        assert(Number.isInteger(idx));
+        self.logTabbed(`<Node ${kind.name} - ${idx}> {`);
+        node.constructor['scan']({
+            child(name: string, opts?: {skippable?: boolean}) {
+                // console.log(`CHILD[${kind.name}] = ${name}`);
+                if (opts && opts.skippable) {
+                    self.logTabbed(`  [Skippable] ${name}:`);
+                } else {
+                    self.logTabbed(`  ${name}:`);
+                }
+                self.tabbing++;
+                self.encodeNodeSubtree(node[name] as (S.BaseNode|null));
+                self.tabbing--;
+            },
+            childArray(name: string) {
+                // console.log(`ARRAY_CHILD[${kind.name}] = ${name}`);
+                self.logTabbed(`  Array<${name}>:`);
+                assert(Array.isArray(node[name]));
+                self.tabbing++;
+                for (let childNode of node[name]) {
+                    self.encodeNodeSubtree(childNode as (S.BaseNode|null));
+                }
+                self.tabbing--;
+            },
+            field(name: string) {
+                self.logTabbed(`  Field.${name} = ${node[name]}`);
+            }
+        });
+        return 0;
+    }
+}
+
+class EncoderNodeVisitor {
 }
