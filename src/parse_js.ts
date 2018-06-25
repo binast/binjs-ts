@@ -403,8 +403,11 @@ export class Importer {
         assertNodeType(json, 'Directive');
         assertType(json.rawValue, 'string');
 
+        const rawValue = json.rawValue as string;
+        this.strings.note(rawValue);
+
         this.nodes.note(S.Directive);
-        return new S.Directive({rawValue: json.rawValue as string});
+        return new S.Directive({rawValue});
     }
 
     //
@@ -478,6 +481,7 @@ export class Importer {
         return new S.VariableDeclaration({kind, declarators});
     }
     liftVariableDeclarationKind(kind: string): S.VariableDeclarationKind {
+        this.strings.note(kind);
         switch (kind) {
           case 'var': return S.VariableDeclarationKind.Var;
           case 'let': return S.VariableDeclarationKind.Let;
@@ -677,6 +681,7 @@ export class Importer {
                 throw new Error('Invalid ForIn with multiple declarations:' +
                                 ` ${json.declarators.length}.`);
             }
+
             const decl = json.declarators[0];
             if (decl.type !== 'VariableDeclarator') {
                 throw new Error('Expected VariableDeclarator in ForIn,' +
@@ -759,6 +764,13 @@ export class Importer {
         this.nodes.note(S.TryCatchStatement);
         return new S.TryCatchStatement({body, catchClause});
     }
+    tryLiftCatchClause(json: any): S.CatchClause | null {
+        if (json === null) {
+            return null;
+        } else {
+            return this.liftCatchClause(json);
+        }
+    }
     liftCatchClause(json: any): S.CatchClause {
         assertNodeType(json, 'CatchClause');
 
@@ -775,7 +787,13 @@ export class Importer {
 
     liftTryFinallyStatement(json: any): S.TryFinallyStatement {
         assertNodeType(json, 'TryFinallyStatement');
-        return summarizeNode(json);
+
+        const body = this.liftBlock(json.body);
+        const catchClause = this.tryLiftCatchClause(json.catchClause);
+        const finalizer = this.liftBlock(json.finalizer);
+
+        this.nodes.note(S.TryFinallyStatement);
+        return new S.TryFinallyStatement({body, catchClause, finalizer});
     }
     liftThrowStatement(json: any): S.ThrowStatement {
         assertNodeType(json, 'ThrowStatement');
@@ -830,11 +848,21 @@ export class Importer {
 
     liftLabeledStatement(json: any): S.LabelledStatement {
         assertNodeType(json, 'LabeledStatement');
-        return summarizeNode(json);
+        assertType(json.label, 'string');
+
+        const label = json.label as string;
+        this.strings.note(label);
+
+        const body = this.liftStatement(json.body);
+
+        this.nodes.note(S.LabelledStatement);
+        return new S.LabelledStatement({label, body});
     }
     liftEmptyStatement(json: any): S.EmptyStatement {
         assertNodeType(json, 'EmptyStatement');
-        return summarizeNode(json);
+
+        this.nodes.note(S.EmptyStatement);
+        return new S.EmptyStatement({});
     }
 
     liftExpression(json: any): S.Expression {
@@ -916,6 +944,7 @@ export class Importer {
         const object_ = this.liftExpression(json.object);
         const property = json.property;
         this.nodes.note(S.StaticMemberExpression);
+        this.strings.note(property);
         return new S.StaticMemberExpression({object_, property});
     }
     liftIdentifierExpression(json: any): S.IdentifierExpression {
@@ -1123,6 +1152,8 @@ export class Importer {
         assertType(json.operator, 'string');
 
         const operator = json.operator as S.UnaryOperator;
+        this.strings.note(operator as string);
+
         const operand = this.liftExpression(json.operand);
 
         this.nodes.note(S.UnaryExpression);
@@ -1133,6 +1164,8 @@ export class Importer {
         assertType(json.operator, 'string');
 
         const operator = json.operator as S.BinaryOperator;
+        this.strings.note(operator as string);
+
         const left = this.liftExpression(json.left);
         const right = this.liftExpression(json.right);
 
@@ -1166,6 +1199,7 @@ export class Importer {
         assertType(json.sticky, 'boolean');
 
         const pattern = json.pattern as string;
+        this.strings.note(pattern);
 
         const flagArray: Array<string> = [];
         if (json.global) { flagArray.push('g'); }
@@ -1174,6 +1208,7 @@ export class Importer {
         if (json.unicode) { flagArray.push('u'); }
         if (json.sticky) { flagArray.push('y'); }
         const flags = flagArray.join();
+        this.strings.note(flags);
 
         this.nodes.note(S.LiteralRegExpExpression);
         return new S.LiteralRegExpExpression({pattern, flags});
@@ -1185,6 +1220,8 @@ export class Importer {
         assertType(json.operator, 'string');
 
         const operator = json.operator as S.CompoundAssignmentOperator;
+        this.strings.note(operator as string);
+
         const binding = this.liftSimpleAssignmentTarget(json.binding);
         const expression = this.liftExpression(json.expression);
 
@@ -1200,6 +1237,8 @@ export class Importer {
 
         const isPrefix = json.isPrefix as boolean;
         const operator = json.operator as S.UpdateOperator;
+        this.strings.note(operator as string);
+
         const operand = this.liftSimpleAssignmentTarget(json.operand);
 
         this.nodes.note(S.UpdateExpression);

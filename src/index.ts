@@ -1,11 +1,13 @@
 
 import * as process from 'process';
 import * as fs from 'fs';
+import * as assert from 'assert';
 
 import {parseScript} from 'shift-parser';
 import * as S from './schema';
 import {Importer, Registry} from './parse_js';
-import {FixedSizeBufStream, Table, Encoder} from './encode_binast';
+import {ArrayWriteStream, Table, Encoder}
+            from './encode_binast';
 
 function encode(filename: string) {
     // Read and parse the script into Shift json.
@@ -29,39 +31,52 @@ function encode(filename: string) {
     // Create the node kinds table.
     const nr: Registry<object|string> = importer.nodes;
     const nodes: Array<object|string> = nr.inFrequencyOrder();
-    const staticTypes = ['string', 'integer', 'boolean', 'null'];
+    const staticTypes = ['string', 'uint', 'number', 'boolean', 'null',
+                         'scope'];
     nodes.splice(0, 0, ...staticTypes);
     const nodeKindTable = new Table<object|string>(nodes);
 
-    const writeStream = new FixedSizeBufStream();
-    const encoder = new Encoder({script,
-                                 stringTable,
-                                 nodeKindTable,
-                                 writeStream});
+    const encoder = new Encoder({stringTable,
+                                 nodeKindTable});
 
-    const stSize = encoder.encodeStringTable();
-    console.log(`Encoded string table size=${stSize}`);
-    let stLength = 0;
-    strings.forEach((s, i) => {
-        const f = sr.frequencyOf(s);
-        console.log(`String [${i}] \`${s}\` - ${f}`);
-    });
+    const stringTableStream = new ArrayWriteStream();
+    const stringTableEncLength = encoder.encodeStringTable(stringTableStream);
+    assert.equal(stringTableEncLength, stringTableStream.array.length);
+    //dumpByteArray(stringTableStream.array);
 
-    console.log(`----`);
-    console.log(`Grammar nodes used=${nodes.length}`);
-    nodes.forEach((n, i) => {
-        if (typeof(n) === 'string') {
-            console.log(`Primitive [${i}] \`${n}\``);
-        } else {
-            const f = nr.frequencyOf(n);
-            console.log(`Node [${i}] \`${n['name']}\` - ${f}`);
+    const treeStream = new ArrayWriteStream();
+    const treeEncLength = encoder.encodeScriptBin(script, treeStream);
+    assert.equal(treeEncLength, treeStream.array.length);
+    //dumpByteArray(treeStream.array);
+    console.log(`Encoded string table with ${stringTable.size} entries: ` +
+                `${stringTableEncLength}`);
+    console.log(`Encoded tree: ${treeEncLength}`);
+
+    dumpFile(stringTableStream.array, '/tmp/test-out.st');
+    dumpFile(treeStream.array, '/tmp/test-out.tree');
+}
+
+function dumpFile(arr, fileName) {
+    const byteArray = new Uint8Array(arr);
+    fs.writeFileSync(fileName, byteArray);
+}
+
+function dumpByteArray(arr) {
+    for (let i = 0; i < arr.length; i += 16) {
+        const line = [`${i}: `];
+        for (let j = i; j < i + 16; j++) {
+            if (j >= arr.length) { break; }
+            const b = arr[j];
+            assert(Number.isInteger(b) && (0 <= b) && (b <= 0xff));
+            let s = b.toString(16);
+            assert(s.length > 0 && s.length <= 2);
+            if (s.length == 1) {
+                s = '0' + s;
+            }
+            line.push(`${s} `);
         }
-    });
-
-    encoder.encodeScript(script);
-    /*
-    // console.log(JSON.stringify(script, null, 2));
-    */
+        console.log(line.join(''));
+    }
 }
 
 function main() {

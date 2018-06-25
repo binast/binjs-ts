@@ -1299,6 +1299,10 @@ export class DoWhileStatement extends BaseNode {
 }
 
 export class EmptyStatement extends BaseNode {
+    constructor(params: {}) {
+        super();
+    }
+
     static scan(h: ScanHandler) {}
 };
 
@@ -1438,6 +1442,12 @@ export class LabelledStatement extends BaseNode {
     readonly label: Label;
     readonly body: Statement;
 
+    constructor(params: {label: string, body: Statement}) {
+        super();
+        this.label = params.label;
+        this.body = params.body;
+    }
+
     static scan(h: ScanHandler) {
         h.field('label');
         h.child('body');
@@ -1547,6 +1557,16 @@ export class TryFinallyStatement extends BaseNode {
     readonly catchClause: CatchClause | null;
     // The `Finally`.
     readonly finalizer: Block;
+
+    constructor(params: {body: Block,
+                         catchClause: CatchClause|null,
+                         finalizer: Block})
+    {
+        super();
+        this.body = params.body;
+        this.catchClause = params.catchClause;
+        this.finalizer = params.finalizer;
+    }
 
     static scan(h: ScanHandler) {
         h.child('body');
