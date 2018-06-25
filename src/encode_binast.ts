@@ -194,12 +194,12 @@ export class Encoder {
         return written;
     }
 
-    encodeScriptText(script: S.Script) {
+    dumpScriptText(script: S.Script) {
         this.tabbing = 0;
-        this.encodeNodeSubtreeText(script);
+        this.dumpSubtreeText(script);
     }
-    encodeScriptBin(script: S.Script, ws: WriteStream): number {
-        return this.encodeNodeSubtreeBin(script, new EncodingWriter(ws));
+    encodeScript(script: S.Script, ws: WriteStream): number {
+        return this.encodeNodeSubtree(script, new EncodingWriter(ws));
     }
 
     absoluteTypeIndex(ty: any) {
@@ -212,7 +212,7 @@ export class Encoder {
     logTabbed(s) {
         console.log(('   ').repeat(this.tabbing) + s);
     }
-    encodeNodeSubtreeText(node: S.BaseNode|null) {
+    dumpSubtreeText(node: S.BaseNode|null) {
         if (node !== null && !(node instanceof S.BaseNode)) {
             console.log("GOT BAD NODE: " + JSON.stringify(node));
             throw new Error("ERROR");
@@ -238,7 +238,7 @@ export class Encoder {
                     self.logTabbed(`  ${name}:`);
                 }
                 self.tabbing++;
-                self.encodeNodeSubtreeText(node[name] as (S.BaseNode|null));
+                self.dumpSubtreeText(node[name] as (S.BaseNode|null));
                 self.tabbing--;
             },
             childArray(name: string) {
@@ -247,17 +247,19 @@ export class Encoder {
                 assert(Array.isArray(node[name]));
                 self.tabbing++;
                 for (let childNode of node[name]) {
-                    self.encodeNodeSubtreeText(childNode as (S.BaseNode|null));
+                    self.dumpSubtreeText(childNode as (S.BaseNode|null));
                 }
                 self.tabbing--;
             },
             field(name: string) {
+                // TODO: Show types for text-dumped fields
+                // TODO: Dump full contents of scope-typed values.
                 self.logTabbed(`  Field.${name} = ${node[name]}`);
             }
         });
     }
 
-    encodeNodeSubtreeBin(node: S.BaseNode|null, w: EncodingWriter): number {
+    encodeNodeSubtree(node: S.BaseNode|null, w: EncodingWriter): number {
         if (node !== null && !(node instanceof S.BaseNode)) {
             console.log("GOT BAD NODE: " + JSON.stringify(node));
             throw new Error("ERROR");
@@ -291,13 +293,13 @@ export class Encoder {
                     // its length, and add it.
                     const stream = new ArrayWriteStream();
                     const w2 = new EncodingWriter(stream);
-                    const stBytes = self.encodeNodeSubtreeBin(childNode, w2);
+                    const stBytes = self.encodeNodeSubtree(childNode, w2);
                     assert(stBytes > 0);
                     assert(stBytes === stream.array.length);
                     written += w.writeVarUint(stBytes);
                     written += w.writeArray(stream.array);
                 } else {
-                    written += self.encodeNodeSubtreeBin(childNode, w);
+                    written += self.encodeNodeSubtree(childNode, w);
                 }
             },
             childArray(name: string) {
@@ -306,18 +308,18 @@ export class Encoder {
                     node[name] as Array<(S.BaseNode|null)>;
                 written += w.writeVarUint(childNodes.length);
                 for (let childNode of node[name]) {
-                    written += self.encodeNodeSubtreeBin(childNode, w);
+                    written += self.encodeNodeSubtree(childNode, w);
                 }
             },
             field(name: string) {
-                written += self.encodeFieldValueBin(node[name], w);
+                written += self.encodeFieldValue(node[name], w);
             }
         });
 
         return written;
     }
 
-    encodeFieldValueBin(val: any, w: EncodingWriter): number {
+    encodeFieldValue(val: any, w: EncodingWriter): number {
         const ty = typeof(val);
         let written = 0;
         switch (ty) {

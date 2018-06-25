@@ -44,7 +44,7 @@ function encode(filename: string, outdir: string) {
     assert.equal(stringTableEncLength, stringTableStream.array.length);
 
     const treeStream = new ArrayWriteStream();
-    const treeEncLength = encoder.encodeScriptBin(script, treeStream);
+    const treeEncLength = encoder.encodeScript(script, treeStream);
     assert.equal(treeEncLength, treeStream.array.length);
     console.log(`Encoded string table with ${stringTable.size} entries: ` +
                 `${stringTableEncLength}`);
