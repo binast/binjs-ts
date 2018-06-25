@@ -9,7 +9,7 @@ import {Importer, Registry} from './parse_js';
 import {ArrayWriteStream, Table, Encoder}
             from './encode_binast';
 
-function encode(filename: string) {
+function encode(filename: string, outdir: string) {
     // Read and parse the script into Shift json.
     const data: string = fs.readFileSync(filename, "utf8");
     const json: any = parseScript(data);
@@ -42,18 +42,27 @@ function encode(filename: string) {
     const stringTableStream = new ArrayWriteStream();
     const stringTableEncLength = encoder.encodeStringTable(stringTableStream);
     assert.equal(stringTableEncLength, stringTableStream.array.length);
-    //dumpByteArray(stringTableStream.array);
 
     const treeStream = new ArrayWriteStream();
     const treeEncLength = encoder.encodeScriptBin(script, treeStream);
     assert.equal(treeEncLength, treeStream.array.length);
-    //dumpByteArray(treeStream.array);
     console.log(`Encoded string table with ${stringTable.size} entries: ` +
                 `${stringTableEncLength}`);
     console.log(`Encoded tree: ${treeEncLength}`);
 
-    dumpFile(stringTableStream.array, '/tmp/test-out.st');
-    dumpFile(treeStream.array, '/tmp/test-out.tree');
+
+    //dumpByteArray(stringTableStream.array);
+    //dumpByteArray(treeStream.array);
+    const origCopyFile = outdir + '/original.js';
+    const stringTableFile = outdir + '/section-01-string-table';
+    const treeFile = outdir + '/section-02-tree';
+    const fullFile = outdir + '/full.binast';
+
+    const origData = fs.readFileSync(filename);
+    dumpFile(origData, origCopyFile);
+    dumpFile(stringTableStream.array, stringTableFile);
+    dumpFile(treeStream.array, treeFile);
+    dumpFile(stringTableStream.array.concat(treeStream.array), fullFile);
 }
 
 function dumpFile(arr, fileName) {
@@ -79,18 +88,30 @@ function dumpByteArray(arr) {
     }
 }
 
+function errExit(msg) {
+    console.error(msg);
+    process.exit(1);
+}
+
 function main() {
     const args: Array<string> = process.argv.slice(2);
-    if (args.length < 2) {
-        console.error("Filename not given.");
-        process.exit(1);
-    }
     if (args[0] === '--encode') {
-        console.log(`ENCODING: ${args[1]}`);
-        encode(args[1]);
+        if (args.length == 1) {
+            errExit('Filename not given');
+        }
+        if (args.length == 2) {
+            errExit('Output directory not given');
+        }
+        const filename = args[1];
+        const outdir = args[2];
+
+        if (!fs.statSync(outdir).isDirectory()) {
+            errExit(`Outdir ${outdir} is not a directory!`);
+        }
+        console.log(`ENCODING: ${filename} into ${outdir}`);
+        encode(filename, outdir);
     } else {
-        console.error(`Unrecognized command: ${args[0]}`);
-        process.exit(1);
+        errExit(`Unrecognized command: ${args[0]}`);
     }
 }
 

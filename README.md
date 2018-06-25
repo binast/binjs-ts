@@ -26,6 +26,13 @@ directory.
 Then, `npm run build` will compile the TypeScript to JS and
 place the results in the `dist` subdirectory.
 
-Then, `npm run encode <FILE>` will "encode" a file (i.e.
-run the generated `dist/index.js` script on the given `<FILE>`).
-However, the actual encoder has yet to be written.
+Then, `npm run encode <FILE> <DIR>` will encode a file (i.e.
+run the generated `dist/index.js` script on the given `<FILE>`,
+dumping results in `<DIR>`).
+
+Currently the resulting files are dumped as follows:
+
+    * `<DIR>/section-01-string-table` contains the string table dump.
+    * `<DIR>/section-02-tree` contains the tree dump
+    * `<DIR>/full.binast` contains the concatenation of the two above files.
+    * `<DIR>/original.js` contains the original js file that was encoded.
