@@ -286,7 +286,19 @@ export class Encoder {
         kind['scan']({
             child(name: string, opts?: {skippable?: boolean}) {
                 const childNode = node[name] as (S.BaseNode|null);
-                written += self.encodeNodeSubtreeBin(childNode, w);
+                if (opts && opts.skippable) {
+                    // Encode child into a separate tream, compute
+                    // its length, and add it.
+                    const stream = new ArrayWriteStream();
+                    const w2 = new EncodingWriter(stream);
+                    const stBytes = self.encodeNodeSubtreeBin(childNode, w2);
+                    assert(stBytes > 0);
+                    assert(stBytes === stream.array.length);
+                    written += w.writeVarUint(stBytes);
+                    written += w.writeArray(stream.array);
+                } else {
+                    written += self.encodeNodeSubtreeBin(childNode, w);
+                }
             },
             childArray(name: string) {
                 assert(Array.isArray(node[name]));
