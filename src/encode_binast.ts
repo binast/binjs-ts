@@ -417,6 +417,3 @@ export class Encoder {
             }, 0);
     }
 }
-
-class EncoderNodeVisitor {
-}
