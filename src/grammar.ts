@@ -37,10 +37,25 @@ export class Grammar {
     // The grammar is just a node kind -> untyped list of properties.
     rules: Map<string, string[]>;
     ruleIndexMap: Map<string, number>;
+    indexRuleMap: Map<number, string>;
 
-    constructor(opt_rules?: Map<string, string[]>) {
-        this.rules = opt_rules || new Map();
+    constructor(opt_rules?: Iterable<[string, string[]]>) {
+        this.rules = new Map(opt_rules);
         this.ruleIndexMap = null;
+        this.indexRuleMap = null;
+    }
+
+    nodeType(index: number): string {
+        if (this.indexRuleMap == null) {
+            let map = new Map<number, string>();
+            for (let rule of this.rules.keys()) {
+                map.set(map.size, rule);
+            }
+            this.indexRuleMap = map;
+        }
+        assert(this.indexRuleMap.has(index),
+            `tried to decode unknown node type ${index}`);
+        return this.indexRuleMap.get(index);
     }
 
     index(nodeType: string): number {

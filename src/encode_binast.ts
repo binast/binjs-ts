@@ -166,7 +166,7 @@ export class StringTable {
 
     stringIndex(s: string): number {
         const r: number = this.table.get(s);
-        assert(Number.isInteger(r));
+        assert(Number.isInteger(r), s);
         return r;
     }
 
@@ -176,14 +176,14 @@ export class StringTable {
 }
 
 export enum BuiltInTags {
-    // TODO(dpc): Do we need undefined as distinct from null?
     NULL = 0,
-    STRING = 1,
-    NUMBER = 2,
-    TRUE = 3,
-    FALSE = 4,
-    SUBTREE = 5,
-    LIST = 6,
+    UNDEFINED = 1,
+    STRING = 2,
+    NUMBER = 3,
+    TRUE = 4,
+    FALSE = 5,
+    SUBTREE = 6,
+    LIST = 7,
 
     FIRST_GRAMMAR_NODE = 7,
 }
@@ -231,13 +231,17 @@ export class Encoder {
     }
 
     encodeGrammar() {
-        // Rewrite the grammar to point to the string table instead.
         this.grammar = new Grammar();
         this.grammar.visit(this.script);
         assert(this.grammar.rules.has('Script'),
             'should have a grammar rule for top-level scripts');
+        // TODO: Encode this in a better order and not as JSON.
+        let cheesyGrammar = {};
+        for (let [key, value] of this.grammar.rules.entries()) {
+            cheesyGrammar[key] = value;
+        }
         let bytes =
-            new TextEncoder().encode(JSON.stringify(this.grammar.rules));
+            new TextEncoder().encode(JSON.stringify(cheesyGrammar));
 
         this.w.writeVarUint(bytes.length);
         this.w.writeUint8Array(bytes);
@@ -245,7 +249,11 @@ export class Encoder {
 
     encodeAbstractSyntax(): void {
         let visit = (node) => {
-            if (node instanceof Array) {
+            if (node === null) {
+                this.w.writeVarUint(BuiltInTags.NULL);
+            } else if (node === undefined) {
+                this.w.writeVarUint(BuiltInTags.UNDEFINED);
+            } else if (node instanceof Array) {
                 this.w.writeVarUint(BuiltInTags.LIST);
                 this.w.writeVarUint(node.length);
                 for (let i = 0; i < node.length; i++) {
@@ -253,10 +261,11 @@ export class Encoder {
                 }
             } else if (node !== null && typeof node == 'object') {
                 let kind = node.constructor.name;
-                console.log(kind, JSON.stringify(this.grammar.rules.get(kind)));
+                //console.log(kind);
                 this.w.writeVarUint(BuiltInTags.FIRST_GRAMMAR_NODE +
                     this.grammar.index(kind));
                 for (let property of this.grammar.rules.get(kind)) {
+                    //console.log('  ', property);
                     visit(node[property]);
                 }
             } else if (typeof node == 'string') {
@@ -272,8 +281,6 @@ export class Encoder {
             } else if (typeof node == 'boolean') {
                 this.w.writeVarUint(
                     node ? BuiltInTags.TRUE : BuiltInTags.FALSE);
-            } else if (node === null) {
-                this.w.writeVarUint(BuiltInTags.NULL);
             } else {
                 throw new Error(`unknown node type ${typeof node}: ${node}`);
             }

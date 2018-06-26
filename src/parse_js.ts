@@ -412,8 +412,9 @@ export class Importer {
     liftDirective(json: any): S.Directive {
         assertNodeType(json, 'Directive');
         assertType(json.rawValue, 'string');
-
-        return new S.Directive({ rawValue: json.rawValue as string });
+        const rawValue = json.rawValue as string;
+        this.strings.noteString(rawValue);
+        return new S.Directive({ rawValue });
     }
 
     //
@@ -485,6 +486,7 @@ export class Importer {
         return new S.VariableDeclaration({ kind, declarators });
     }
     liftVariableDeclarationKind(kind: string): S.VariableDeclarationKind {
+        this.strings.noteString(kind);
         switch (kind) {
             case 'var': return S.VariableDeclarationKind.Var;
             case 'let': return S.VariableDeclarationKind.Let;
@@ -908,6 +910,8 @@ export class Importer {
 
         // Note the use of the identifier.
         this.cx.noteUseName(name);
+        // TODO(dpc): BinJS should encode variables as a scope index and
+        // not necessarily as strings.
 
         return new S.IdentifierExpression({ name });
     }
@@ -1091,6 +1095,7 @@ export class Importer {
         assertType(json.operator, 'string');
 
         const operator = json.operator as S.UnaryOperator;
+        this.strings.noteString(operator);
         const operand = this.liftExpression(json.operand);
 
         return new S.UnaryExpression({ operator, operand });
@@ -1100,6 +1105,7 @@ export class Importer {
         assertType(json.operator, 'string');
 
         const operator = json.operator as S.BinaryOperator;
+        this.strings.noteString(operator);
         const left = this.liftExpression(json.left);
         const right = this.liftExpression(json.right);
 
@@ -1130,6 +1136,7 @@ export class Importer {
         assertType(json.sticky, 'boolean');
 
         const pattern = json.pattern as string;
+        this.strings.noteString(pattern);
 
         const flagArray: Array<string> = [];
         if (json.global) { flagArray.push('g'); }
@@ -1138,6 +1145,7 @@ export class Importer {
         if (json.unicode) { flagArray.push('u'); }
         if (json.sticky) { flagArray.push('y'); }
         const flags = flagArray.join();
+        this.strings.noteString(flags);
 
         return new S.LiteralRegExpExpression({ pattern, flags });
     }
@@ -1147,6 +1155,7 @@ export class Importer {
         assertType(json.operator, 'string');
 
         const operator = json.operator as S.CompoundAssignmentOperator;
+        this.strings.noteString(operator);
         const binding = this.liftSimpleAssignmentTarget(json.binding);
         const expression = this.liftExpression(json.expression);
 
@@ -1161,6 +1170,7 @@ export class Importer {
 
         const isPrefix = json.isPrefix as boolean;
         const operator = json.operator as S.UpdateOperator;
+        this.strings.noteString(operator);
         const operand = this.liftSimpleAssignmentTarget(json.operand);
 
         return new S.UpdateExpression({ isPrefix, operator, operand });
