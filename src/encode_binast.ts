@@ -11,6 +11,11 @@ export interface WriteStream {
 
 const FIXED_SIZE: number = 0x10000;
 
+// TODO: Improve this to flush to a backing-list of Uint8Arrays.  Then
+//       they can be iterated over efficiently, and concatenating
+//       different streams would become much faster and easier on
+//       the GC (e.g. when creating sub-streams for lazy elements which
+//       need to be prefixed with their encoded length).
 export class ArrayWriteStream implements WriteStream {
     array: Array<number>;
     
