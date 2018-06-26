@@ -179,11 +179,11 @@ import {WriteStream} from './encode_binast';
 
 export class Encoder {
     readonly stringTable: Table<string>;
-    readonly nodeKindTable: Table<object|string>;
+    readonly nodeKindTable: Table<string>;
     tabbing: number;
 
     constructor(params: {stringTable: Table<string>,
-                         nodeKindTable: Table<object|string>})
+                         nodeKindTable: Table<string>})
     {
         this.stringTable = params.stringTable;
         this.nodeKindTable = params.nodeKindTable;
@@ -207,7 +207,7 @@ export class Encoder {
         return this.encodeNodeSubtree(script, new EncodingWriter(ws));
     }
 
-    absoluteTypeIndex(ty: any) {
+    absoluteTypeIndex(ty: string) {
         return this.nodeKindTable.index(ty);
     }
     absoluteStringIndex(str: string) {
@@ -282,15 +282,14 @@ export class Encoder {
         let written = 0;
 
         // Look up the node constructor's index.
-        const kind = node.constructor;
+        const kind: string = node.nodeKindName;
         const idx = self.absoluteTypeIndex(kind);
-
 
         // Write out the type of the node.
         written += w.writeVarUint(idx);
 
         // Encode each child and field in order.
-        kind['scan']({
+        node.constructor['scan']({
             child(name: string, opts?: {skippable?: boolean}) {
                 const childNode = node[name] as (S.BaseNode|null);
                 if (opts && opts.skippable) {

@@ -29,12 +29,15 @@ function encode(filename: string, outdir: string) {
     const stringTable = new Table<string>(strings);
 
     // Create the node kinds table.
-    const nr: Registry<object|string> = importer.nodes;
-    const nodes: Array<object|string> = nr.inFrequencyOrder();
+    const nr: Registry<object> = importer.nodes;
+    const nodes: Array<object> = nr.inFrequencyOrder();
+    const nodeKinds: Array<string> = nodes.map(n => {
+        return n['name'] as string;
+    });
     const staticTypes = ['string', 'uint', 'number', 'boolean', 'null',
                          'scope'];
-    nodes.splice(0, 0, ...staticTypes);
-    const nodeKindTable = new Table<object|string>(nodes);
+    nodeKinds.splice(0, 0, ...staticTypes);
+    const nodeKindTable = new Table<string>(nodeKinds);
 
     const encoder = new Encoder({stringTable,
                                  nodeKindTable});

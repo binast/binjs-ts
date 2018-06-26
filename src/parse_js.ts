@@ -369,12 +369,12 @@ export class Registry<T> {
 export class Importer {
     readonly cx: Context;
     readonly strings: Registry<string>;
-    readonly nodes: Registry<S.BaseNode>;
+    readonly nodes: Registry<object>;
 
     constructor() {
         this.cx = new Context();
         this.strings = new Registry<string>();
-        this.nodes = new Registry<S.BaseNode>();
+        this.nodes = new Registry<object>();
     }
 
     //

@@ -145,6 +145,10 @@ export abstract class BaseNode {
     constructor() {
     }
 
+    get nodeKindName(): string {
+        return this.constructor.name as string;
+    }
+
     static scan(h: ScanHandler) {
         throw new Error('BaseNode.Scan not overridden.');
     }
