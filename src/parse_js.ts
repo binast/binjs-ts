@@ -897,6 +897,7 @@ export class Importer {
         // TODO: Check for |super| in object_.
         const object_ = this.liftExpression(json.object);
         const property = json.property;
+        this.strings.noteString(property);
         return new S.StaticMemberExpression({ object_, property });
     }
     liftIdentifierExpression(json: any): S.IdentifierExpression {
@@ -1200,7 +1201,7 @@ export class Importer {
         assertType(json.value, 'string');
 
         const value = json.value as string;
-
+        this.strings.noteString(value);
         return new S.LiteralPropertyName({ value });
     }
 }

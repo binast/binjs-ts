@@ -33,12 +33,29 @@ function kindOf(node: any) {
 }
 
 // Walks an AST and recovers a grammar from it.
-export class GrammarRecoverer {
+export class Grammar {
     // The grammar is just a node kind -> untyped list of properties.
-    rules: Map<string, string[]>
+    rules: Map<string, string[]>;
+    ruleIndexMap: Map<string, number>;
 
-    constructor() {
-        this.rules = new Map();
+    constructor(opt_rules?: Map<string, string[]>) {
+        this.rules = opt_rules || new Map();
+        this.ruleIndexMap = null;
+    }
+
+    index(nodeType: string): number {
+        if (this.ruleIndexMap == null) {
+            let map = new Map<string, number>();
+            for (let rule of this.rules.keys()) {
+                // TODO(dpc): When these indices are encoded more carefully
+                // the ordering of this map should be tuned to that.
+                map.set(rule, map.size);
+            }
+            this.ruleIndexMap = map;
+        }
+        assert(this.ruleIndexMap.has(nodeType),
+            `tried to encode unknown node type ${nodeType}`);
+        return this.ruleIndexMap.get(nodeType);
     }
 
     /**
@@ -61,11 +78,11 @@ export class GrammarRecoverer {
             }
             let props = Object.getOwnPropertyNames(node).filter((name) => name !== 'type').sort();
 
-            let expected = this.rules[kind];
+            let expected = this.rules.get(kind);
             if (expected && !shallowEquals(props, expected)) {
                 throw Error(`encountered differing shapes of of ${kind}: ${expected} verus ${props}`);
             } else {
-                this.rules[kind] = props;
+                this.rules.set(kind, props);
             }
             for (let prop of props) {
                 this.visit(node[prop]);

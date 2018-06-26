@@ -2,7 +2,8 @@ import * as assert from 'assert';
 import { Writable } from 'stream';
 import { TextDecoder, TextEncoder } from 'util';
 
-import { GrammarRecoverer } from './grammar';
+import { rewriteAst } from './ast_util';
+import { Grammar } from './grammar';
 import * as S from './schema';
 
 export interface WriteStream {
@@ -93,9 +94,20 @@ export class EncodingWriter {
         this.stream = stream;
     }
 
+    writeFloat(f: number): number {
+        let floatBuf = new Float32Array([f]);
+        let intBuf = new Uint8Array(floatBuf.buffer);
+        let n = this.writeArray([
+            intBuf[0], intBuf[1], intBuf[2], intBuf[3]
+        ]);
+        assert(n === 4, `should have written a four-byte float, was ${n}`);
+        return 4;
+    }
+
     writeByte(b: number): number {
         return this.stream.writeByte(b);
     }
+
     writeArray(bs: Array<number>): number {
         return this.stream.writeArray(bs);
     }
@@ -163,11 +175,25 @@ export class StringTable {
     }
 }
 
+export enum BuiltInTags {
+    // TODO(dpc): Do we need undefined as distinct from null?
+    NULL = 0,
+    STRING = 1,
+    NUMBER = 2,
+    TRUE = 3,
+    FALSE = 4,
+    SUBTREE = 5,
+    LIST = 6,
+
+    FIRST_GRAMMAR_NODE = 7,
+}
+
 export class Encoder {
     readonly script: S.Script;
     readonly stringTable: StringTable;
     readonly writeStream: WriteStream;
-    readonly encWriter: EncodingWriter;
+    readonly w: EncodingWriter;
+    grammar: Grammar;
 
     constructor(params: {
         script: S.Script,
@@ -177,20 +203,18 @@ export class Encoder {
         this.script = params.script;
         this.stringTable = params.stringTable;
         this.writeStream = params.writeStream;
-        this.encWriter = new EncodingWriter(this.writeStream);
+        this.w = new EncodingWriter(this.writeStream);
+        this.grammar = null;
     }
 
-    encode(): number {
-        let n = 0;
-        n += this.encodeStringTable();
-        n += this.encodeGrammar();
-        return n;
+    public encode(): void {
+        this.encodeGrammar();
+        this.encodeStringTable();
+        this.encodeAbstractSyntax();
     }
 
-    encodeStringTable(): number {
-        const ws = this.encWriter;
-        let written = 0;
-        written += ws.writeVarUint(this.stringTable.strings.length);
+    encodeStringTable() {
+        this.w.writeVarUint(this.stringTable.strings.length);
         let stringData = [];
         this.stringTable.eachString((s: string) => {
             const encBytes = new TextEncoder().encode(s);
@@ -199,23 +223,61 @@ export class Encoder {
             // Note, this is *bytes* and not characters. This lets the
             // decoder skip chunks of the string table if it wants.
             const len = encBytes.length;
-            written += ws.writeVarUint(len);
+            this.w.writeVarUint(len);
         });
         stringData.forEach((encBytes: Uint8Array) => {
-            written += ws.writeUint8Array(encBytes);
+            this.w.writeUint8Array(encBytes);
         });
-        return written;
     }
 
-    // TODO(dpc): Make this use string references.
-    encodeGrammar(): number {
-        let grammar = new GrammarRecoverer();
-        grammar.visit(this.script);
-        let bytes = new TextEncoder().encode(JSON.stringify(grammar.rules));
+    encodeGrammar() {
+        // Rewrite the grammar to point to the string table instead.
+        this.grammar = new Grammar();
+        this.grammar.visit(this.script);
+        assert(this.grammar.rules.has('Script'),
+            'should have a grammar rule for top-level scripts');
+        let bytes =
+            new TextEncoder().encode(JSON.stringify(this.grammar.rules));
 
-        let written = 0;
-        written += this.encWriter.writeVarUint(bytes.length);
-        written += this.encWriter.writeUint8Array(bytes);
-        return written;
+        this.w.writeVarUint(bytes.length);
+        this.w.writeUint8Array(bytes);
+    }
+
+    encodeAbstractSyntax(): void {
+        let visit = (node) => {
+            if (node instanceof Array) {
+                this.w.writeVarUint(BuiltInTags.LIST);
+                this.w.writeVarUint(node.length);
+                for (let i = 0; i < node.length; i++) {
+                    visit(node[i]);
+                }
+            } else if (node !== null && typeof node == 'object') {
+                let kind = node.constructor.name;
+                console.log(kind, JSON.stringify(this.grammar.rules.get(kind)));
+                this.w.writeVarUint(BuiltInTags.FIRST_GRAMMAR_NODE +
+                    this.grammar.index(kind));
+                for (let property of this.grammar.rules.get(kind)) {
+                    visit(node[property]);
+                }
+            } else if (typeof node == 'string') {
+                // TODO(dpc): Are strings part of a union? If not we
+                // should not tag strings.
+                this.w.writeVarUint(BuiltInTags.STRING);
+                // TODO(dpc): Write this in a separate stream.
+                this.w.writeVarUint(this.stringTable.stringIndex(node));
+            } else if (typeof node == 'number') {
+                this.w.writeVarUint(BuiltInTags.NUMBER);
+                // TODO(dpc): Write this in a separate stream.
+                this.w.writeFloat(node);
+            } else if (typeof node == 'boolean') {
+                this.w.writeVarUint(
+                    node ? BuiltInTags.TRUE : BuiltInTags.FALSE);
+            } else if (node === null) {
+                this.w.writeVarUint(BuiltInTags.NULL);
+            } else {
+                throw new Error(`unknown node type ${typeof node}: ${node}`);
+            }
+        };
+        visit(this.script);
     }
 }

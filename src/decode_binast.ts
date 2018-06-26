@@ -1,19 +1,24 @@
 import { TextDecoder } from 'util';
 
+import { rewriteAst } from './ast_util';
+import { Grammar } from './grammar';
 import { ReadStream } from './io';
+import * as S from './schema';
 
 export class Decoder {
     readonly r: ReadStream;
-    strings: string[];
-    grammar: Map<string, string[]>;
+    public strings: string[];
+    public grammar: Grammar;
+    public script: S.Script;
 
     constructor(readStream: ReadStream) {
         this.r = readStream;
     }
 
-    decode() {
-        this.strings = this.decodeStringTable();
+    public decode(): void {
         this.grammar = this.decodeGrammar();
+        this.strings = this.decodeStringTable();
+        this.script = this.decodeAbstractSyntax();
     }
 
     decodeStringTable(): string[] {
@@ -36,8 +41,13 @@ export class Decoder {
         return strings;
     }
 
-    decodeGrammar(): Map<string, string[]> {
+    decodeGrammar(): Grammar {
         let length = this.r.readVarUint();
-        return JSON.parse(this.r.readUtf8Bytes(length));
+        let rules = JSON.parse(this.r.readUtf8Bytes(length));
+        return new Grammar(rules);
+    }
+
+    decodeAbstractSyntax(): S.Script {
+        throw new Error('nyi');
     }
 }

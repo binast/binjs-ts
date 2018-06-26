@@ -40,7 +40,7 @@ function decode(filename: string) {
     const buffer: Buffer = fs.readFileSync(filename);
     const decoder = new Decoder(new ArrayStream(buffer));
     decoder.decode();
-    console.log(decoder.strings);
+    console.log(JSON.stringify(decoder.script, null, 2));
 }
 
 function main() {
