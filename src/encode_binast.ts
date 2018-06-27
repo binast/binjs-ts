@@ -4,6 +4,7 @@ import { TextDecoder, TextEncoder } from 'util';
 
 import { rewriteAst } from './ast_util';
 import { Grammar } from './grammar';
+import { Memoizer } from './memoize';
 import * as S from './schema';
 
 export interface WriteStream {
@@ -194,6 +195,7 @@ export class Encoder {
     readonly stringTable: StringTable;
     readonly writeStream: WriteStream;
     readonly w: EncodingWriter;
+    readonly memoizer: Memoizer;
     grammar: Grammar;
 
     constructor(params: {
@@ -201,7 +203,8 @@ export class Encoder {
         stringTable: StringTable,
         writeStream: WriteStream
     }) {
-        this.script = params.script;
+        this.memoizer = new Memoizer();
+        this.script = this.memoizer.memo(params.script);
         this.stringTable = params.stringTable;
         this.writeStream = params.writeStream;
         this.w = new EncodingWriter(this.writeStream);
