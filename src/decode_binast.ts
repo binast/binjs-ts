@@ -1,15 +1,17 @@
+import * as assert from 'assert';
 import { TextDecoder } from 'util';
 
 import { rewriteAst } from './ast_util';
 import { Grammar } from './grammar';
 import { ReadStream } from './io';
 import * as S from './schema';
+import { BuiltInTags } from './encode_binast';
 
 export class Decoder {
     readonly r: ReadStream;
     public strings: string[];
     public grammar: Grammar;
-    public script: S.Script;
+    public program: S.Program;
 
     constructor(readStream: ReadStream) {
         this.r = readStream;
@@ -18,7 +20,7 @@ export class Decoder {
     public decode(): void {
         this.grammar = this.decodeGrammar();
         this.strings = this.decodeStringTable();
-        this.script = this.decodeAbstractSyntax();
+        this.program = this.decodeAbstractSyntax();
     }
 
     decodeStringTable(): string[] {
@@ -47,7 +49,52 @@ export class Decoder {
         return new Grammar(rules);
     }
 
-    decodeAbstractSyntax(): S.Script {
-        throw new Error('nyi');
+    decodeAbstractSyntax(): S.Program {
+        let p = this.decodeSomething();
+        assert(p instanceof S.Script || p instanceof S.Module,
+            p.constructor.name);
+        return p;
+    }
+
+    decodeSomething(): any {
+        let tag = this.r.readVarUint();
+        if (tag === BuiltInTags.NULL) {
+            return null;
+        }
+        if (tag === BuiltInTags.UNDEFINED) {
+            return undefined;
+        }
+        if (tag === BuiltInTags.TRUE) {
+            return true;
+        }
+        if (tag === BuiltInTags.FALSE) {
+            return false;
+        }
+        if (tag === BuiltInTags.NUMBER) {
+            let array = this.r.readBytes(8);
+            assert(array.byteLength == 8, `expected 8 bytes, but was ${array.byteLength}`);
+            let floats = new Float64Array(array.buffer);
+            return floats[0];
+        }
+        if (tag === BuiltInTags.STRING) {
+            let i = this.r.readVarUint();
+            return this.strings[i];
+        }
+        if (tag === BuiltInTags.LIST) {
+            let n = this.r.readVarUint();
+            let result = new Array(n);
+            for (let i = 0; i < n; i++) {
+                result[i] = this.decodeSomething();
+            }
+            return result;
+        }
+        tag -= BuiltInTags.FIRST_GRAMMAR_NODE;
+        let kind = this.grammar.nodeType(tag);
+        let ctor = S[kind];
+        let props = {};
+        for (let property of this.grammar.rules.get(kind)) {
+            props[property] = this.decodeSomething();
+        }
+        return new ctor(props);
     }
 }

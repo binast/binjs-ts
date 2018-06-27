@@ -95,13 +95,14 @@ export class EncodingWriter {
     }
 
     writeFloat(f: number): number {
-        let floatBuf = new Float32Array([f]);
+        let floatBuf = new Float64Array([f]);
         let intBuf = new Uint8Array(floatBuf.buffer);
         let n = this.writeArray([
-            intBuf[0], intBuf[1], intBuf[2], intBuf[3]
+            intBuf[0], intBuf[1], intBuf[2], intBuf[3],
+            intBuf[4], intBuf[5], intBuf[6], intBuf[7]
         ]);
-        assert(n === 4, `should have written a four-byte float, was ${n}`);
-        return 4;
+        assert(n === 8, `should have written a eight-byte float, was ${n}`);
+        return 8;
     }
 
     writeByte(b: number): number {
@@ -185,7 +186,7 @@ export enum BuiltInTags {
     SUBTREE = 6,
     LIST = 7,
 
-    FIRST_GRAMMAR_NODE = 7,
+    FIRST_GRAMMAR_NODE = 8,
 }
 
 export class Encoder {

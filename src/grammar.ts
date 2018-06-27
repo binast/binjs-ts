@@ -39,8 +39,13 @@ export class Grammar {
     ruleIndexMap: Map<string, number>;
     indexRuleMap: Map<number, string>;
 
-    constructor(opt_rules?: Iterable<[string, string[]]>) {
-        this.rules = new Map(opt_rules);
+    constructor(opt_rules?: { [name: string]: string[] }) {
+        this.rules = new Map();
+        if (opt_rules !== undefined) {
+            for (let name of Object.keys(opt_rules)) {
+                this.rules.set(name, opt_rules[name]);
+            }
+        }
         this.ruleIndexMap = null;
         this.indexRuleMap = null;
     }

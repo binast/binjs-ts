@@ -22,15 +22,16 @@ export class ArrayStream {
         return this.buffer[this.offset++];
     }
 
-    // Note, this returns a view of the underlying buffer; don't modify it.
     readBytes(n: number): Uint8Array {
         assert(Number.isInteger(n));
         assert(0 <= n);
-        let result = this.buffer.subarray(this.offset, this.offset + n);
+        let result = this.buffer.slice(this.offset, this.offset + n);
         let overread = n - result.length;
         if (overread) {
             throw new Error(`read ${overread} bytes past end of input`);
         }
+        assert(result.byteLength === n,
+            `wanted ${n} bytes but got ${result.byteLength}`);
         this.offset += n;
         return result;
     }
