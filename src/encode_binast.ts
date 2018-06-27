@@ -177,6 +177,8 @@ export class StringTable {
     }
 }
 
+// TODO(dpc): If doing skippable functions there needs to be a summary of
+// how many "memo" indices to skip in the chunk.
 export enum BuiltInTags {
     NULL = 0,
     UNDEFINED = 1,
@@ -186,8 +188,12 @@ export enum BuiltInTags {
     FALSE = 5,
     SUBTREE = 6,
     LIST = 7,
+    // "memo" nodes memoize their child
+    MEMO_RECORD = 8,
+    // "replay" nodes repeat a memoized subtree
+    MEMO_REPLAY = 9,
 
-    FIRST_GRAMMAR_NODE = 8,
+    FIRST_GRAMMAR_NODE = 10,
 }
 
 export class Encoder {
@@ -204,7 +210,22 @@ export class Encoder {
         writeStream: WriteStream
     }) {
         this.memoizer = new Memoizer();
+        // TODO(dpc): If eliding strings, that should happen before memoization.
         this.script = this.memoizer.memo(params.script);
+
+        // This dumps the memoization table which can be
+        // useful for debugging.
+        if (false) {
+            let n = 0;
+            for (let [key, count] of this.memoizer.counts.entries()) {
+                if (count > 1) {
+                    n++;
+                    console.log(typeof key, count);
+                }
+            }
+            console.log(n);
+        }
+
         this.stringTable = params.stringTable;
         this.writeStream = params.writeStream;
         this.w = new EncodingWriter(this.writeStream);
@@ -252,7 +273,26 @@ export class Encoder {
     }
 
     encodeAbstractSyntax(): void {
+        let memoIndex = new Map<any, number>();
         let visit = (node) => {
+            // TODO(dpc): Consider writing the child tags first. This
+            // should turn monomorphic nodes into copies.
+
+            // If the node was memoized, replay it.
+            if (memoIndex.has(node)) {
+                this.w.writeVarUint(BuiltInTags.MEMO_REPLAY);
+                this.w.writeVarUint(memoIndex.get(node));
+                return;
+            }
+
+            // If this node should be memoized, add the preamble.
+            if (this.memoizer.counts.get(node) > 1) {
+                // TODO(dpc): Improve this heuristic which looks at use
+                // without regard for size.
+                this.w.writeVarUint(BuiltInTags.MEMO_RECORD);
+                memoIndex.set(node, memoIndex.size);
+            }
+
             if (node === null) {
                 this.w.writeVarUint(BuiltInTags.NULL);
             } else if (node === undefined) {

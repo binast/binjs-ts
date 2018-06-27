@@ -83,6 +83,17 @@ export class Memoizer {
         for (let obj of objs) {
             if (equals(node, obj)) {
                 this.counts.set(obj, this.counts.get(obj) + 1);
+
+                // The counts for all of the child nodes were
+                // incremented in rewriting this node, but this node
+                // will be shared, so decrement them back.
+                for (let property in Object.keys(obj)) {
+                    let value = obj[property];
+                    if (this.counts.has(value)) {
+                        this.counts.set(value, this.counts.get(value) - 1);
+                    }
+                }
+
                 return obj;
             }
         }

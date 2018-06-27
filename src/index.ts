@@ -21,6 +21,7 @@ function encode(inputFilename: string, outputFilename: string, options: EncodeOp
     }
     const importer: Importer = new Importer();
     const script: S.Script = importer.liftScript(json);
+
     if (options.dumpAst) {
         console.log(JSON.stringify(script, null, 2));
     }
