@@ -343,15 +343,17 @@ export class Encoder {
 
         // Indices are assigned to subtrees as they are written.
         let memoIndex = new Map<any, number>();
+        // These are nodes we know are too small to memoize.
+        let skip_memo = new Set<any>();
 
         // Heuristic which controls whether to memoize.
         let should_memoize = (node) => {
             // We always "memoize" the root node simply because we want to
             // store it.
-            return this.memoizer.counts.get(node) > 1 || node === this.script;
+            return !skip_memo.has(node) && (this.memoizer.counts.get(node) > 1 || node === this.script);
         }
         let output_memoized_chunks = (node) => {
-            if (memoIndex.has(node)) {
+            if (memoIndex.has(node) || skip_memo.has(node)) {
                 // We've been here before; prune.
                 return;
             }
@@ -363,8 +365,19 @@ export class Encoder {
                 }
             }
             if (should_memoize(node)) {
+                // Try serializing the node to see how big it is.
+                let tmp = w;
+                let buffer = new FixedSizeBufStream();
+                w = new EncodingWriter(buffer);
                 visit(node);
-                memoIndex.set(node, memoIndex.size);
+                // Heuristic: You can tweak the minimum memoized buffer size; the current setting basically turns sharing off.
+                if (buffer.size > 10_000_000 || node === this.script) {
+                    buffer.copyToWriteStream(tmp);
+                    memoIndex.set(node, memoIndex.size);
+                } else {
+                    skip_memo.add(node);
+                }
+                w = tmp;
             }
         }
         let write_type_tag = (node) => {
