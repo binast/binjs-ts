@@ -2,10 +2,9 @@
 import * as assert from 'assert';
 
 import * as S from './schema';
-import * as util from './util';
 
 import {WriteStream, ArrayWriteStream, EncodingWriter, Table}
-    from './encode_binast';
+    from './write_stream';
 
 const CACHE_SIZE = 1;
 

@@ -6,8 +6,9 @@ import * as assert from 'assert';
 import {parseScript} from 'shift-parser';
 import * as S from './schema';
 import {Importer, Registry} from './parse_js';
-import {ArrayWriteStream, Table, Encoder}
-            from './encode_binast';
+import {Encoder} from './encode_binast';
+import {ArrayWriteStream, EncodingWriter, Table}
+    from './write_stream';
 
 function encode(filename: string, outdir: string) {
     // Read and parse the script into Shift json.
