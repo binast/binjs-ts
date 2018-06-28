@@ -11,7 +11,7 @@ import { rewriteAst } from './ast_util';
 export class Decoder {
     readonly r: ReadStream;
     public strings: string[];
-    stringStream: MruDeltaReader;
+    stringStream: ReadStream;
     public grammar: Grammar;
     public program: S.Program;
 
@@ -55,11 +55,11 @@ export class Decoder {
 
     prepareStringStream(): void {
         let lengthBytes = this.r.readVarUint();
-        this.stringStream = new MruDeltaReader(2, new ArrayStream(this.r.readBytes(lengthBytes)));
+        this.stringStream = new ArrayStream(this.r.readBytes(lengthBytes));
     }
 
     readStringStream(): string {
-        let index = this.stringStream.readUint();
+        let index = this.stringStream.readVarUint();
         assert(0 <= index && index < this.strings.length,
             `string stream index out of bounds: ${index} of ${this.strings.length}`);
         return this.strings[index];

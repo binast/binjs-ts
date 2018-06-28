@@ -328,9 +328,9 @@ export class Encoder {
     encodeStringStream(): void {
         // Encode the string ID stream to learn its length.
         let stringStream = new FixedSizeBufStream();
-        let w = new MruDeltaWriter(2, stringStream);
+        let w = new EncodingWriter(stringStream);
         for (let value of this.stripper.strings) {
-            w.writeUint(this.stringTable.stringIndex(value));
+            w.writeVarUint(this.stringTable.stringIndex(value));
         }
         // Write the length so that the decoder can skip this part of
         // the stream.
