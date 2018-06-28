@@ -363,17 +363,10 @@ export class Encoder {
                 }
             }
             if (should_memoize(node)) {
-                write_subtree(node);
+                visit(node);
                 memoIndex.set(node, memoIndex.size);
             }
         }
-        // Writes a single subtree. Any memoized parts must have
-        // already been output.
-        let write_subtree = (node) => {
-            write_type_tag(node);
-            visit(node);
-        };
-
         let write_type_tag = (node) => {
             if (memoIndex.has(node)) {
                 w.writeVarUint(BuiltInTags.MEMO_REPLAY);
@@ -403,7 +396,10 @@ export class Encoder {
             }
         };
 
+        // Writes a single subtree. Any memoized parts must have
+        // already been output.
         let visit = (node) => {
+            write_type_tag(node);
             if (memoIndex.has(node)) {
                 // If the node was memoized, replay it.
                 w.writeVarUint(memoIndex.get(node));
@@ -412,10 +408,6 @@ export class Encoder {
 
             if (node instanceof Array) {
                 w.writeVarUint(node.length);
-                // Write all the tags.
-                for (let i = 0; i < node.length; i++) {
-                    write_type_tag(node[i]);
-                }
                 // Write all the values.
                 for (let i = 0; i < node.length; i++) {
                     visit(node[i]);
@@ -425,10 +417,6 @@ export class Encoder {
                 w.writeFloat(node);
             } else if (node !== null && node !== this.stripper && typeof node == 'object') {
                 let kind = node.constructor.name;
-                // Write all the tags.
-                for (let property of this.grammar.rules.get(kind)) {
-                    write_type_tag(node[property]);
-                }
                 // Write all the values.
                 for (let property of this.grammar.rules.get(kind)) {
                     //console.log('  ', property);
