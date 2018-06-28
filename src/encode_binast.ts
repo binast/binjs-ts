@@ -230,11 +230,7 @@ export class Encoder {
         this.stripper = new StringStripper();
         script = this.stripper.visit(script);
 
-        let strings = Array.from(new Set(this.stripper.strings));
-        strings.sort(
-            // Standard Unicode sort.
-            (a: string, b: string) => a < b ? -1 : a == b ? 0 : 1);
-        this.stringTable = new StringTable(strings);
+        this.stringTable = this.makeStringTable(this.stripper.strings);
 
         this.memoizer = new Memoizer();
         script = this.memoizer.memo(script);
@@ -257,6 +253,35 @@ export class Encoder {
         this.writeStream = params.writeStream;
         this.w = new EncodingWriter(this.writeStream);
         this.grammar = null;
+    }
+
+    private makeStringTable(strings: string[]): StringTable {
+        // Build a table of string -> occurrence count.
+        let stringFrequency = new Map<string, number>();
+        for (let s of strings) {
+            stringFrequency.set(s, 1 + (stringFrequency.get(s) || 0));
+        }
+
+        let lexicographicSort = (a: string, b: string) => a < b ? -1 : a == b ? 0 : 1;
+
+        // Get the most frequent strings.
+        let topStringList =
+            (Array
+                .from(stringFrequency.entries())
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 32)
+                .map(p => p[0])
+                .sort(lexicographicSort));
+
+        //console.log(`top strings: ${JSON.stringify(topStringList)}`);
+
+        // Get the rest of the strings.
+        let otherStringSet = new Set(strings);
+        for (let s of topStringList) {
+            otherStringSet.delete(s);
+        }
+        let otherStringList = Array.from(otherStringSet).sort(lexicographicSort);
+        return new StringTable(topStringList.concat(otherStringList));
     }
 
     public encode(): void {
