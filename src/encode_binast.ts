@@ -204,10 +204,8 @@ export enum BuiltInTags {
     FALSE = 5,
     SUBTREE = 6,
     LIST = 7,
-    // "memo" nodes memoize their child
-    MEMO_RECORD = 8,
     // "replay" nodes repeat a memoized subtree
-    MEMO_REPLAY = 9,
+    MEMO_REPLAY = 8,
 
     FIRST_GRAMMAR_NODE = 10,
 }
@@ -338,40 +336,53 @@ export class Encoder {
         stringStream.copyToWriteStream(this.writeStream);
     }
 
+    // Returns the number of subtrees written.
     encodeAbstractSyntax(syntaxStream: WriteStream): void {
-        let w = new EncodingWriter(syntaxStream);
-        let memoIndex = new Map<any, number>();
-        let visit = (node) => {
-            // TODO(dpc): Consider writing the child tags first. This
-            // should turn monomorphic nodes into copies.
+        let subtrees = new FixedSizeBufStream();
+        let w = new EncodingWriter(subtrees);
 
-            // If the node was memoized, replay it.
+        // Indices are assigned to subtrees as they are written.
+        let memoIndex = new Map<any, number>();
+
+        // Heuristic which controls whether to memoize.
+        let should_memoize = (node) => {
+            // We always "memoize" the root node simply because we want to
+            // store it.
+            return this.memoizer.counts.get(node) > 1 || node === this.script;
+        }
+        let output_memoized_chunks = (node) => {
             if (memoIndex.has(node)) {
-                w.writeVarUint(BuiltInTags.MEMO_REPLAY);
-                w.writeVarUint(memoIndex.get(node));
+                // We've been here before; prune.
                 return;
             }
-
-            // If this node should be memoized, add the preamble.
-            if (this.memoizer.counts.get(node) > 1) {
-                // TODO(dpc): Improve this heuristic which looks at use
-                // without regard for size.
-                // TODO(dpc): Consider making the decoder safer by
-                // only allocating this slot after the definition is done.
-                w.writeVarUint(BuiltInTags.MEMO_RECORD);
+            // Recurse first so that leaves are memoized first.
+            if (node instanceof Array ||
+                node !== null && typeof node === 'object' && !(node instanceof StringStripper)) {
+                for (let property of Object.keys(node)) {
+                    output_memoized_chunks(node[property]);
+                }
+            }
+            if (should_memoize(node)) {
+                write_subtree(node);
                 memoIndex.set(node, memoIndex.size);
             }
+        }
+        // Writes a single subtree. Any memoized parts must have
+        // already been output.
+        let write_subtree = (node) => {
+            write_type_tag(node);
+            visit(node);
+        };
 
-            if (node === null) {
+        let write_type_tag = (node) => {
+            if (memoIndex.has(node)) {
+                w.writeVarUint(BuiltInTags.MEMO_REPLAY);
+            } else if (node === null) {
                 w.writeVarUint(BuiltInTags.NULL);
             } else if (node === undefined) {
                 w.writeVarUint(BuiltInTags.UNDEFINED);
             } else if (node instanceof Array) {
                 w.writeVarUint(BuiltInTags.LIST);
-                w.writeVarUint(node.length);
-                for (let i = 0; i < node.length; i++) {
-                    visit(node[i]);
-                }
             } else if (typeof node == 'string') {
                 throw new Error(
                     `encountered string in AST; strings should have been elided: "${node}"`);
@@ -379,8 +390,6 @@ export class Encoder {
                 w.writeVarUint(BuiltInTags.STRING);
             } else if (typeof node == 'number') {
                 w.writeVarUint(BuiltInTags.NUMBER);
-                // TODO(dpc): Write this in a separate stream.
-                w.writeFloat(node);
             } else if (typeof node == 'boolean') {
                 w.writeVarUint(
                     node ? BuiltInTags.TRUE : BuiltInTags.FALSE);
@@ -389,14 +398,50 @@ export class Encoder {
                 //console.log(kind);
                 w.writeVarUint(BuiltInTags.FIRST_GRAMMAR_NODE +
                     this.grammar.index(kind));
-                for (let property of this.grammar.rules.get(kind)) {
-                    //console.log('  ', property);
-                    visit(node[property]);
-                }
             } else {
                 throw new Error(`unknown node type ${typeof node}: ${node}`);
             }
         };
-        visit(this.script);
+
+        let visit = (node) => {
+            if (memoIndex.has(node)) {
+                // If the node was memoized, replay it.
+                w.writeVarUint(memoIndex.get(node));
+                return;
+            }
+
+            if (node instanceof Array) {
+                w.writeVarUint(node.length);
+                // Write all the tags.
+                for (let i = 0; i < node.length; i++) {
+                    write_type_tag(node[i]);
+                }
+                // Write all the values.
+                for (let i = 0; i < node.length; i++) {
+                    visit(node[i]);
+                }
+            } else if (typeof node == 'number') {
+                // TODO(dpc): Write this in a separate stream.
+                w.writeFloat(node);
+            } else if (node !== null && node !== this.stripper && typeof node == 'object') {
+                let kind = node.constructor.name;
+                // Write all the tags.
+                for (let property of this.grammar.rules.get(kind)) {
+                    write_type_tag(node[property]);
+                }
+                // Write all the values.
+                for (let property of this.grammar.rules.get(kind)) {
+                    //console.log('  ', property);
+                    visit(node[property]);
+                }
+            }
+        };
+
+        // The last chunk output will be the script.
+        output_memoized_chunks(this.script);
+
+        // Write the number of trees.
+        new EncodingWriter(syntaxStream).writeVarUint(memoIndex.size);
+        subtrees.copyToWriteStream(syntaxStream);
     }
 }

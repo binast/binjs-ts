@@ -66,28 +66,24 @@ export class Decoder {
     }
 
     decodeAbstractSyntax(): S.Program {
-        // TODO(dpc): This could be given a more accurate type about replay-able.
-        let memoTable: any[] = [];
-        let decode = (r: ReadStream, is_replaying: boolean): any => {
+        let memoTable: [number, { replay: () => ReadStream }][] = [];
+
+        // Decodes a subtree and adds it to the memoized subtree table.
+        let decode_subtree = (r: ReadStream): any => {
+            // TODO(dpc): This could just record byte offsets.
             let tag = r.readVarUint();
+            let recorder = new ReadStreamRecorder(r);
+            let subtree = decode(recorder, tag);
+            memoTable.push([tag, recorder.detach()]);
+            return subtree;
+        };
+
+        let decode = (r: ReadStream, tag: number): any => {
             if (tag === BuiltInTags.MEMO_REPLAY) {
                 let i = r.readVarUint();
-                assert(0 <= i && i < memoTable.length, '' + i);
-                return decode(memoTable[i].replay(), true);
-            }
-            if (tag === BuiltInTags.MEMO_RECORD) {
-                if (is_replaying) {
-                    // We're replaying a memoized part of the tree, so
-                    // *this* part is already recorded; don't memoize again.
-                    return decode(r, true);
-                } else {
-                    let i = memoTable.length;
-                    let recorder = new ReadStreamRecorder(r);
-                    memoTable.push({ replay: () => { throw Error('tried to replay evacuated thunk') } });
-                    let memento = decode(recorder, false);
-                    memoTable[i] = recorder.detach();
-                    return memento;
-                }
+                assert(0 <= i && i < memoTable.length, `need to produce memoized value ${i} but have only memoized ${memoTable.length} values`);
+                let [memo_tag, stream] = memoTable[i];
+                return decode(stream.replay(), memo_tag);
             }
             if (tag === BuiltInTags.NULL) {
                 return null;
@@ -113,23 +109,39 @@ export class Decoder {
             if (tag === BuiltInTags.LIST) {
                 let n = r.readVarUint();
                 let result = new Array(n);
+                // Read the tags.
                 for (let i = 0; i < n; i++) {
-                    result[i] = decode(r, is_replaying);
+                    result[i] = r.readVarUint();
+                }
+                // Read the values.
+                for (let i = 0; i < n; i++) {
+                    result[i] = decode(r, result[i]);
                 }
                 return result;
             }
             tag -= BuiltInTags.FIRST_GRAMMAR_NODE;
             let kind = this.grammar.nodeType(tag);
             let ctor = S[kind];
+            // Read the tags.
+            let tags = [];
+            for (let property of this.grammar.rules.get(kind)) {
+                tags.push(r.readVarUint());
+            }
+            // Read the values.
             let props = {};
             for (let property of this.grammar.rules.get(kind)) {
-                props[property] = decode(r, is_replaying);
+                props[property] = decode(r, tags.shift());
             }
             return new ctor(props);
         };
-        let p = decode(this.r, false);
-        assert(p instanceof S.Script || p instanceof S.Module,
-            p.constructor.name);
-        return p;
+        let numSubtrees = this.r.readVarUint();
+        console.log(`decoding ${numSubtrees} subtrees`);
+        let subtree = undefined;
+        for (let i = 0; i < numSubtrees; i++) {
+            subtree = decode_subtree(this.r);
+        }
+        assert(subtree instanceof S.Script || subtree instanceof S.Module,
+            subtree.constructor.name);
+        return subtree;
     }
 }

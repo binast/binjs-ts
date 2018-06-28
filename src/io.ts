@@ -38,6 +38,7 @@ class ReplayStream implements ReadStream {
     }
 
     private replay<T>(label: LogRecord, opt_argument?: number): T {
+        assert(this.i < this.log.length, `read past end of stream ${this.log.length} items long`);
         let [what, value, arg] = this.log[this.i++];
         if (what !== label) {
             throw new Error(`replaying stream expected to read ${what} but asked to read ${label}`);
