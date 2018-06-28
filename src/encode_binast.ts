@@ -4,7 +4,6 @@ import { TextDecoder, TextEncoder } from 'util';
 
 import * as S from './schema';
 import { Grammar } from './grammar';
-import { Memoizer } from './memoize';
 import { MruDeltaWriter } from './delta';
 import { StringStripper } from './string_strip';
 import { rewriteAst } from './ast_util';
@@ -202,12 +201,16 @@ export enum BuiltInTags {
     NUMBER = 3,
     TRUE = 4,
     FALSE = 5,
-    SUBTREE = 6,
-    LIST = 7,
-    // "replay" nodes repeat a memoized subtree
-    MEMO_REPLAY = 8,
+    CONS = 7,
+    NIL = 8,
 
-    FIRST_GRAMMAR_NODE = 10,
+    FIRST_GRAMMAR_NODE = 9,
+}
+
+export enum BuiltInGrammar {
+    PROGRAM = '*program*',
+    NUMBER = '*number*',
+    CONS = '*cons*',
 }
 
 export class Encoder {
@@ -215,7 +218,6 @@ export class Encoder {
     readonly stringTable: StringTable;
     readonly writeStream: WriteStream;
     readonly w: EncodingWriter;
-    readonly memoizer: Memoizer;
     readonly stripper: StringStripper;
     grammar: Grammar;
 
@@ -230,23 +232,7 @@ export class Encoder {
 
         this.stringTable = this.makeStringTable(this.stripper.strings);
 
-        this.memoizer = new Memoizer();
-        script = this.memoizer.memo(script);
-
         this.script = script;
-
-        // This dumps the memoization table which can be
-        // useful for debugging.
-        if (false) {
-            let n = 0;
-            for (let [key, count] of this.memoizer.counts.entries()) {
-                if (count > 1) {
-                    n++;
-                    console.log(typeof key, count);
-                }
-            }
-            console.log(n);
-        }
 
         this.writeStream = params.writeStream;
         this.w = new EncodingWriter(this.writeStream);
@@ -336,113 +322,118 @@ export class Encoder {
         stringStream.copyToWriteStream(this.writeStream);
     }
 
-    // Returns the number of subtrees written.
     encodeAbstractSyntax(syntaxStream: WriteStream): void {
-        let subtrees = new FixedSizeBufStream();
-        let w = new EncodingWriter(subtrees);
+        // Shred the tree into a table of parent node kind, n-th
+        // child children.
+        let table = new Map<string, any[]>();
 
-        // Indices are assigned to subtrees as they are written.
-        let memoIndex = new Map<any, number>();
-        // These are nodes we know are too small to memoize.
-        let skip_memo = new Set<any>();
+        // Forges a key into `table`.
+        let key = (rule: string, child: number): string => rule + '/' + child;
 
-        // Heuristic which controls whether to memoize.
-        let should_memoize = (node) => {
-            // We always "memoize" the root node simply because we want to
-            // store it.
-            return !skip_memo.has(node) && (this.memoizer.counts.get(node) > 1 || node === this.script);
-        }
-        let output_memoized_chunks = (node) => {
-            if (memoIndex.has(node) || skip_memo.has(node)) {
-                // We've been here before; prune.
-                return;
-            }
-            // Recurse first so that leaves are memoized first.
-            if (node instanceof Array ||
-                node !== null && typeof node === 'object' && !(node instanceof StringStripper)) {
-                for (let property of Object.keys(node)) {
-                    output_memoized_chunks(node[property]);
-                }
-            }
-            if (should_memoize(node)) {
-                // Try serializing the node to see how big it is.
-                let tmp = w;
-                let buffer = new FixedSizeBufStream();
-                w = new EncodingWriter(buffer);
-                visit(node);
-                // Heuristic: You can tweak the minimum memoized buffer size; the current setting basically turns sharing off.
-                if (buffer.size > 10_000_000 || node === this.script) {
-                    buffer.copyToWriteStream(tmp);
-                    memoIndex.set(node, memoIndex.size);
-                } else {
-                    skip_memo.add(node);
-                }
-                w = tmp;
+        // Initialize the tables.
+        for (let [rule, properties] of this.grammar.rules.entries()) {
+            for (let i = 0; i < properties.length; i++) {
+                table.set(key(rule, i), []);
             }
         }
-        let write_type_tag = (node) => {
-            if (memoIndex.has(node)) {
-                w.writeVarUint(BuiltInTags.MEMO_REPLAY);
+
+        // Add phony entries for these built-in rules.
+        // "list" is like a cons cell, a production with two slots;
+        // number has one slot with the actual literal.
+        // program is the entrypoint with one slot.
+        table.set(key(BuiltInGrammar.CONS, 0), []);
+        table.set(key(BuiltInGrammar.CONS, 1), []);
+        table.set(key(BuiltInGrammar.NUMBER, 0), []);
+        table.set(key(BuiltInGrammar.PROGRAM, 0), []);
+
+        // These nodes have no children.
+        let terminal = (node) => {
+            return node === undefined || node === null ||
+                typeof node === 'boolean' || node instanceof StringStripper;
+        };
+
+        // Writes into the shredded tree.
+        let write = (rule: string, i: number, value: any): void => {
+            let items = table.get(key(rule, i));
+            if (items === undefined) {
+                throw Error(`no children found for ${key(rule, i)}`);
+            }
+            items.push(value);
+        };
+
+        // Visits the tree preorder. You just have to write something
+        // before recursing so that the decoder has a thread to
+        // follow.
+        let visit = (context, i, node) => {
+            if (node === true) {
+                write(context, i, BuiltInTags.TRUE);
+            } else if (node === false) {
+                write(context, i, BuiltInTags.FALSE);
             } else if (node === null) {
-                w.writeVarUint(BuiltInTags.NULL);
+                write(context, i, BuiltInTags.NULL);
             } else if (node === undefined) {
-                w.writeVarUint(BuiltInTags.UNDEFINED);
+                write(context, i, BuiltInTags.UNDEFINED);
+            } else if (node instanceof StringStripper) {
+                // TODO(dpc): This could be handled uniformly now;
+                // strings would end up in their own table like
+                // numbers.
+                write(context, i, BuiltInTags.STRING);
+            } else if (typeof node === 'number') {
+                write(context, i, BuiltInTags.NUMBER);
+                write(BuiltInGrammar.NUMBER, 0, node);
+            } else if (node instanceof Array && node.length === 0) {
+                write(context, i, BuiltInTags.NIL);
             } else if (node instanceof Array) {
-                w.writeVarUint(BuiltInTags.LIST);
-            } else if (typeof node == 'string') {
-                throw new Error(
-                    `encountered string in AST; strings should have been elided: "${node}"`);
-            } else if (node === this.stripper) {
-                w.writeVarUint(BuiltInTags.STRING);
-            } else if (typeof node == 'number') {
-                w.writeVarUint(BuiltInTags.NUMBER);
-            } else if (typeof node == 'boolean') {
-                w.writeVarUint(
-                    node ? BuiltInTags.TRUE : BuiltInTags.FALSE);
-            } else if (typeof node == 'object') {
+                write(context, i, BuiltInTags.CONS);
+                for (let i = 0; i < node.length; i++) {
+                    visit(BuiltInGrammar.CONS, 0, node[i]);
+                    write(BuiltInGrammar.CONS, 1, i == node.length - 1 ? BuiltInTags.NIL : BuiltInTags.CONS);
+                }
+            } else if (typeof node === 'object') {
                 let kind = node.constructor.name;
-                //console.log(kind);
-                w.writeVarUint(BuiltInTags.FIRST_GRAMMAR_NODE +
-                    this.grammar.index(kind));
-            } else {
-                throw new Error(`unknown node type ${typeof node}: ${node}`);
+                let tag = BuiltInTags.FIRST_GRAMMAR_NODE + this.grammar.index(kind);
+                write(context, i, tag);
+                i = 0;
+                for (let property of this.grammar.rules.get(kind)) {
+                    visit(kind, i++, node[property]);
+                }
             }
         };
 
-        // Writes a single subtree. Any memoized parts must have
-        // already been output.
-        let visit = (node) => {
-            write_type_tag(node);
-            if (memoIndex.has(node)) {
-                // If the node was memoized, replay it.
-                w.writeVarUint(memoIndex.get(node));
+        let w = new EncodingWriter(syntaxStream);
+        let write_kind = (rule: string, num_children: number): void => {
+            if (num_children === 0) {
                 return;
             }
+            assert(table.has(key(rule, 0)), `no children for ${key(rule, 0)} grammar says [${this.grammar.rules.get(rule)}]`);
+            // Start with a count of instances; we use the count
+            // implied by the number of first children.
+            w.writeVarUint(table.get(key(rule, 0)).length);
 
-            if (node instanceof Array) {
-                w.writeVarUint(node.length);
-                // Write all the values.
-                for (let i = 0; i < node.length; i++) {
-                    visit(node[i]);
-                }
-            } else if (typeof node == 'number') {
-                // TODO(dpc): Write this in a separate stream.
-                w.writeFloat(node);
-            } else if (node !== null && node !== this.stripper && typeof node == 'object') {
-                let kind = node.constructor.name;
-                // Write all the values.
-                for (let property of this.grammar.rules.get(kind)) {
-                    //console.log('  ', property);
-                    visit(node[property]);
+            // Now write out all of the children.
+            for (let i = 0; i < num_children; i++) {
+                for (let value of table.get(key(rule, i))) {
+                    if (rule === BuiltInGrammar.NUMBER) {
+                        w.writeFloat(value);
+                    } else {
+                        // Everything else is a tag.
+                        w.writeVarUint(value);
+                    }
                 }
             }
         };
 
-        // The last chunk output will be the script.
-        output_memoized_chunks(this.script);
+        // Shred the tree.
+        visit(BuiltInGrammar.PROGRAM, 0, this.script);
 
-        // Write the number of trees.
-        new EncodingWriter(syntaxStream).writeVarUint(memoIndex.size);
-        subtrees.copyToWriteStream(syntaxStream);
+        // Write the built-in kinds.
+        write_kind(BuiltInGrammar.PROGRAM, 1);
+        write_kind(BuiltInGrammar.NUMBER, 1);
+        write_kind(BuiltInGrammar.CONS, 2);
+
+        // Write the user data.
+        for (let [rule, body] of this.grammar.rules.entries()) {
+            write_kind(rule, body.length);
+        }
     }
 }

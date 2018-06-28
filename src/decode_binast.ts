@@ -3,7 +3,7 @@ import { TextDecoder } from 'util';
 
 import * as S from './schema';
 import { ArrayStream, ReadStream, ReadStreamRecorder } from './io';
-import { BuiltInTags } from './encode_binast';
+import { BuiltInGrammar, BuiltInTags } from './encode_binast';
 import { Grammar } from './grammar';
 import { MruDeltaReader } from './delta';
 import { rewriteAst } from './ast_util';
@@ -66,78 +66,98 @@ export class Decoder {
     }
 
     decodeAbstractSyntax(): S.Program {
-        let memoTable: { replay: () => ReadStream }[] = [];
+        let key = (rule: string, child: number) => rule + '/' + child;
 
-        // Decodes a subtree and adds it to the memoized subtree table.
-        // `inflate` controls whether to actually read from the external
-        // string stream.
-        let decode_subtree = (r: ReadStream, inflate: boolean): any => {
-            // TODO(dpc): This could just record byte offsets.
-            let recorder = new ReadStreamRecorder(r);
-            let subtree = decode(recorder, inflate);
-            memoTable.push(recorder.detach());
-            return subtree;
+        // The table of children for nodes at a given level.
+        let table = new Map<string, any[]>();
+
+        // Reads a row of the table.
+        let read_count = (rule: string, num_children: number) => {
+            if (num_children === 0) {
+                return;
+            }
+            let num_nodes = this.r.readVarUint();
+            for (let i = 0; i < num_children; i++) {
+                let data = [];
+                for (let j = 0; j < num_nodes; j++) {
+                    let value;
+                    if (rule === BuiltInGrammar.NUMBER) {
+                        let bytes = this.r.readBytes(8);
+                        assert(bytes.byteLength == 8, `expected 8 bytes, but was ${bytes.byteLength}`);
+                        let floats = new Float64Array(bytes.buffer);
+                        value = floats[0];
+                    } else {
+                        value = this.r.readVarUint();
+                    }
+                    data.push(value);
+                }
+                table.set(key(rule, i), data);
+            }
         };
 
-        let decode = (r: ReadStream, inflate: boolean): any => {
-            let tag = r.readVarUint();
-            if (tag === BuiltInTags.MEMO_REPLAY) {
-                let i = r.readVarUint();
-                assert(0 <= i && i < memoTable.length, `need to produce memoized value ${i} but have only memoized ${memoTable.length} values`);
-                let stream = memoTable[i];
-                return decode(stream.replay(), inflate);
+        // Read the whole table.
+        read_count(BuiltInGrammar.PROGRAM, 1);
+        read_count(BuiltInGrammar.NUMBER, 1);
+        read_count(BuiltInGrammar.CONS, 2);
+        for (let [rule, body] of this.grammar.rules.entries()) {
+            read_count(rule, body.length);
+        }
+
+        // Decode the program.
+        let decode = (rule: string): any => {
+            if (rule === BuiltInGrammar.NUMBER) {
+                return table.get(key(rule, 0)).shift();
             }
-            if (tag === BuiltInTags.NULL) {
-                return null;
-            }
-            if (tag === BuiltInTags.UNDEFINED) {
-                return undefined;
-            }
-            if (tag === BuiltInTags.TRUE) {
-                return true;
-            }
-            if (tag === BuiltInTags.FALSE) {
-                return false;
-            }
-            if (tag === BuiltInTags.NUMBER) {
-                let array = r.readBytes(8);
-                assert(array.byteLength == 8, `expected 8 bytes, but was ${array.byteLength}`);
-                let floats = new Float64Array(array.buffer);
-                return floats[0];
-            }
-            if (tag === BuiltInTags.STRING) {
-                if (inflate) {
-                    return this.readStringStream();
-                } else {
-                    return '<<placeholder>>';
-                }
-            }
-            if (tag === BuiltInTags.LIST) {
-                let n = r.readVarUint();
-                let result = new Array(n);
-                // Read the values.
-                for (let i = 0; i < n; i++) {
-                    result[i] = decode(r, inflate);
-                }
+            if (rule === BuiltInGrammar.CONS) {
+                let result = [];
+                let right;
+                do {
+                    result.push(decode_tag(table.get(key(rule, 0)).shift()));
+                    right = table.get(key(rule, 1)).shift();
+                } while (right === BuiltInTags.CONS);
+                assert(right === BuiltInTags.NIL, 'list should end with nil');
                 return result;
             }
-            tag -= BuiltInTags.FIRST_GRAMMAR_NODE;
-            let kind = this.grammar.nodeType(tag);
-            let ctor = S[kind];
-            // Read the values.
-            let props = {};
-            for (let property of this.grammar.rules.get(kind)) {
-                props[property] = decode(r, inflate);
+            if (rule === BuiltInGrammar.PROGRAM) {
+                return decode_tag(table.get(key(rule, 0)).shift());
             }
-            return new ctor(props);
+            let ctor = S[rule];
+            let params = {};
+            let i = 0;
+            for (let property of this.grammar.rules.get(rule)) {
+                params[property] = decode_tag(table.get(key(rule, i++)).shift());
+            }
+            return new ctor(params);
         };
-        let numSubtrees = this.r.readVarUint();
-        let subtree = undefined;
-        for (let i = 0; i < numSubtrees; i++) {
-            subtree = decode_subtree(this.r, i === numSubtrees - 1);
-        }
-        assert(subtree instanceof S.Script || subtree instanceof S.Module,
-            subtree.constructor.name);
-        return subtree;
+
+        let decode_tag = (tag: number): any => {
+            switch (tag) {
+                case BuiltInTags.CONS:
+                    return decode(BuiltInGrammar.CONS);
+                case BuiltInTags.FALSE:
+                    return false;
+                case BuiltInTags.NIL:
+                    return [];
+                case BuiltInTags.NULL:
+                    return null;
+                case BuiltInTags.NUMBER:
+                    return decode(BuiltInGrammar.NUMBER);
+                case BuiltInTags.STRING:
+                    return this.readStringStream();
+                case BuiltInTags.TRUE:
+                    return true;
+                case BuiltInTags.UNDEFINED:
+                    return undefined;
+                default:
+                    tag -= BuiltInTags.FIRST_GRAMMAR_NODE;
+                    let kind = this.grammar.nodeType(tag);
+                    return decode(kind);
+            }
+        };
+
+        let program = decode(BuiltInGrammar.PROGRAM);
+        assert(program instanceof S.Script || program instanceof S.Module,
+            program.constructor.name);
+        return program;
     }
 }
