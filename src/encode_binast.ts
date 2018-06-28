@@ -2,11 +2,12 @@ import * as assert from 'assert';
 import { Writable } from 'stream';
 import { TextDecoder, TextEncoder } from 'util';
 
-import { rewriteAst } from './ast_util';
+import * as S from './schema';
 import { Grammar } from './grammar';
 import { Memoizer } from './memoize';
+import { MruDeltaWriter } from './delta';
 import { StringStripper } from './string_strip';
-import * as S from './schema';
+import { rewriteAst } from './ast_util';
 
 export interface WriteStream {
     writeByte(b: number): number;
@@ -302,9 +303,9 @@ export class Encoder {
     encodeStringStream(): void {
         // Encode the string ID stream to learn its length.
         let stringStream = new FixedSizeBufStream();
-        let w = new EncodingWriter(stringStream);
+        let w = new MruDeltaWriter(2, stringStream);
         for (let value of this.stripper.strings) {
-            w.writeVarUint(this.stringTable.stringIndex(value));
+            w.writeUint(this.stringTable.stringIndex(value));
         }
         // Write the length so that the decoder can skip this part of
         // the stream.

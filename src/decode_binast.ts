@@ -1,16 +1,17 @@
 import * as assert from 'assert';
 import { TextDecoder } from 'util';
 
-import { rewriteAst } from './ast_util';
-import { Grammar } from './grammar';
-import { ArrayStream, ReadStream, ReadStreamRecorder } from './io';
 import * as S from './schema';
+import { ArrayStream, ReadStream, ReadStreamRecorder } from './io';
 import { BuiltInTags } from './encode_binast';
+import { Grammar } from './grammar';
+import { MruDeltaReader } from './delta';
+import { rewriteAst } from './ast_util';
 
 export class Decoder {
     readonly r: ReadStream;
     public strings: string[];
-    stringStream: ReadStream;
+    stringStream: MruDeltaReader;
     public grammar: Grammar;
     public program: S.Program;
 
@@ -54,11 +55,11 @@ export class Decoder {
 
     prepareStringStream(): void {
         let lengthBytes = this.r.readVarUint();
-        this.stringStream = new ArrayStream(this.r.readBytes(lengthBytes));
+        this.stringStream = new MruDeltaReader(2, new ArrayStream(this.r.readBytes(lengthBytes)));
     }
 
     readStringStream(): string {
-        let index = this.stringStream.readVarUint();
+        let index = this.stringStream.readUint();
         assert(0 <= index && index < this.strings.length,
             `string stream index out of bounds: ${index} of ${this.strings.length}`);
         return this.strings[index];

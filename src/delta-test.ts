@@ -104,4 +104,9 @@ describe('MruDeltaReader', () => {
         let values = [1100, 1095];
         expect(writeRead(values)).to.deep.equal(values);
     });
+
+    it('should read some random values', () => {
+        let values = [1e4, 7, 8000, 1 << 30, 1 << 30 - 1, 1 << 100, 1 << 30, 2, 1, 0, 33, 32, 31, 1234567, 0x8000002, 0x7000001];
+        expect(writeRead(values)).to.deep.equal(values);
+    });
 });

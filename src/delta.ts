@@ -86,8 +86,11 @@ export class MruDeltaWriter {
             }
             let n = this.w.writeByte(byte);
             while (v) {
-                byte = v & (1 << BITS_PER_BYTE) - 1;
-                v >>= BITS_PER_BYTE - 1;
+                byte = v & 0x7f;
+                v >>= 7;
+                if (v) {
+                    byte |= 0x80;
+                }
                 n += this.w.writeByte(byte);
             }
             return n;
@@ -118,17 +121,19 @@ export class MruDeltaReader {
     constructor(numCellBits: number, r: ReadStream) {
         assert(numCellBits == 2, 'this reader is hard-coded for two cell bits');
         this.r = r;
-        this.buffer = Array(1 << numCellBits - 1).fill(0);
+        this.buffer = Array((1 << numCellBits) - 1).fill(0);
     }
 
     readUint(): number {
         let b = this.r.readByte();
+        assert(!Number.isNaN(b));
         let cell = (b & 0xc0) >> 6;
         let value = b & 0x3f;
 
         if (cell === 0) {
             if ((value & 0x20) === 0) {
                 // Small literal unsigned int.
+                assert(!Number.isNaN(value), 'small value');
                 return value;
             }
             // Multi-byte literal unsigned int.
@@ -143,12 +148,14 @@ export class MruDeltaReader {
             } while (more_bits);
             this.buffer.splice(this.buffer.length - 1, 1);
             this.buffer.splice(0, 0, value);
+            assert(!Number.isNaN(value), 'multi-byte value');
             return value;
         }
 
         // Delta from the cell-th item.
         cell--;
-        console.log(`delta from cell ${cell}, cells=${this.buffer}, delta=${value}`);
+        //console.log(`delta from cell ${cell}, cells=${this.buffer}, delta=${value}`);
+        assert(0 <= cell && cell < 3);
 
         if (value & 0x20) {
             // Value is negative.
@@ -157,6 +164,8 @@ export class MruDeltaReader {
             value = -value;
         }
         value += this.buffer[cell];
+
+        assert(!Number.isNaN(value), `delta value, cell #${cell}, cells=${this.buffer}`);
 
         if (cell == 0) {
             this.buffer[0] = value;
