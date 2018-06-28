@@ -69,21 +69,23 @@ export class Decoder {
         let memoTable: [number, { replay: () => ReadStream }][] = [];
 
         // Decodes a subtree and adds it to the memoized subtree table.
-        let decode_subtree = (r: ReadStream): any => {
+        // `inflate` controls whether to actually read from the external
+        // string stream.
+        let decode_subtree = (r: ReadStream, inflate: boolean): any => {
             // TODO(dpc): This could just record byte offsets.
             let tag = r.readVarUint();
             let recorder = new ReadStreamRecorder(r);
-            let subtree = decode(recorder, tag);
+            let subtree = decode(recorder, tag, inflate);
             memoTable.push([tag, recorder.detach()]);
             return subtree;
         };
 
-        let decode = (r: ReadStream, tag: number): any => {
+        let decode = (r: ReadStream, tag: number, inflate: boolean): any => {
             if (tag === BuiltInTags.MEMO_REPLAY) {
                 let i = r.readVarUint();
                 assert(0 <= i && i < memoTable.length, `need to produce memoized value ${i} but have only memoized ${memoTable.length} values`);
                 let [memo_tag, stream] = memoTable[i];
-                return decode(stream.replay(), memo_tag);
+                return decode(stream.replay(), memo_tag, inflate);
             }
             if (tag === BuiltInTags.NULL) {
                 return null;
@@ -104,7 +106,11 @@ export class Decoder {
                 return floats[0];
             }
             if (tag === BuiltInTags.STRING) {
-                return this.readStringStream();
+                if (inflate) {
+                    return this.readStringStream();
+                } else {
+                    return '<<placeholder>>';
+                }
             }
             if (tag === BuiltInTags.LIST) {
                 let n = r.readVarUint();
@@ -115,7 +121,7 @@ export class Decoder {
                 }
                 // Read the values.
                 for (let i = 0; i < n; i++) {
-                    result[i] = decode(r, result[i]);
+                    result[i] = decode(r, result[i], inflate);
                 }
                 return result;
             }
@@ -130,7 +136,7 @@ export class Decoder {
             // Read the values.
             let props = {};
             for (let property of this.grammar.rules.get(kind)) {
-                props[property] = decode(r, tags.shift());
+                props[property] = decode(r, tags.shift(), inflate);
             }
             return new ctor(props);
         };
@@ -138,7 +144,7 @@ export class Decoder {
         console.log(`decoding ${numSubtrees} subtrees`);
         let subtree = undefined;
         for (let i = 0; i < numSubtrees; i++) {
-            subtree = decode_subtree(this.r);
+            subtree = decode_subtree(this.r, i === numSubtrees - 1);
         }
         assert(subtree instanceof S.Script || subtree instanceof S.Module,
             subtree.constructor.name);
