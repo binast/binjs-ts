@@ -1,5 +1,7 @@
 import * as assert from 'assert';
 
+import { StringStripper } from './string_strip';
+
 // Compares whether two primitives, objects or arrays are the same or
 // have the same properties. Property values are compared with `===`.
 function shallowEquals(xs, ys) {
@@ -19,17 +21,6 @@ function shallowEquals(xs, ys) {
     }
     // TODO(dpc): Implement shallow object comparison.
     throw Error('shallow object compare not implemented');
-}
-
-function kindOf(node: any) {
-    if (node instanceof Array ||
-        typeof node === 'number' ||
-        typeof node === 'string' ||
-        typeof node === 'boolean' ||
-        typeof node === 'undefined') {
-        // TODO(dpc): Make up some built-in kinds for these.
-    }
-    return node.constructor.name;
 }
 
 // Walks an AST and recovers a grammar from it.
@@ -82,14 +73,22 @@ export class Grammar {
      * Visits `node`, checks and records its structure.
      */
     visit(node: any) {
-        if (node instanceof Array) {
+        if (node === null ||
+            node === undefined ||
+            typeof node === 'number' ||
+            typeof node === 'boolean' ||
+            typeof node === 'undefined' ||
+            typeof node === 'string' ||
+            node instanceof StringStripper) {
+            // A primitive; do nothing.
+        } else if (node instanceof Array) {
             // This is not very JavaScript-y because it doesn't handle
             // array-like objects. But all our arrays are arrays.
             for (let child of node) {
                 this.visit(child);
             }
         } else if (node instanceof Object) {
-            let kind = kindOf(node);
+            let kind = node.constructor.name;
             if (!kind) {
                 throw Error(`expected a typed AST node, got ${JSON.stringify(node).substring(0, 100)}`);
             }
@@ -108,13 +107,7 @@ export class Grammar {
                 this.visit(node[prop]);
             }
         } else {
-            if (node !== null &&
-                typeof node !== 'number' &&
-                typeof node !== 'boolean' &&
-                typeof node !== 'undefined' &&
-                typeof node !== 'string') {
-                throw Error(`expected a primitive; got ${node}`);
-            }
+            throw Error(`expected an AST node; got: ${node}`);
         }
     }
 }

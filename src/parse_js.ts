@@ -334,59 +334,11 @@ class Context {
     }
 }
 
-export class StringRegistry {
-    // Table mapping all strings that are used to
-    // number of uses.
-    freqMap: Map<string, number>;
-
-    constructor() {
-        this.freqMap = new Map();
-    }
-
-    noteString(s: string) {
-        const count = this.freqMap.get(s);
-        const next = (count !== undefined) ? (count as number) + 1
-            : 1;
-        this.freqMap.set(s, next);
-    }
-
-    // Return an array of all the strings ordered by use.
-    stringsInFrequencyOrder(): Array<string> {
-        const st = this.freqMap;
-        const array: Array<string> = new Array();
-        for (let s of st.keys()) {
-            array.push(s);
-        }
-        // Sort, with highest frequencies showing up first.
-        array.sort((a: string, b: string) => (st.get(b) - st.get(a)));
-
-        return array;
-    }
-
-    stringsInLexicographicOrder(): Array<string> {
-        const st = this.freqMap;
-        const array: Array<string> = new Array();
-        for (let s of st.keys()) {
-            array.push(s);
-        }
-        // Standard Unicode sort.
-        array.sort((a: string, b: string) => a < b ? -1 : a == b ? 0 : 1);
-        return array;
-    }
-
-    frequencyOf(s: string) {
-        assert(this.freqMap.has(s));
-        return this.freqMap.get(s);
-    }
-}
-
 export class Importer {
     readonly cx: Context;
-    readonly strings: StringRegistry;
 
     constructor() {
         this.cx = new Context();
-        this.strings = new StringRegistry();
     }
 
     //
@@ -413,7 +365,6 @@ export class Importer {
         assertNodeType(json, 'Directive');
         assertType(json.rawValue, 'string');
         const rawValue = json.rawValue as string;
-        this.strings.noteString(rawValue);
         return new S.Directive({ rawValue });
     }
 
@@ -486,7 +437,6 @@ export class Importer {
         return new S.VariableDeclaration({ kind, declarators });
     }
     liftVariableDeclarationKind(kind: string): S.VariableDeclarationKind {
-        this.strings.noteString(kind);
         switch (kind) {
             case 'var': return S.VariableDeclarationKind.Var;
             case 'let': return S.VariableDeclarationKind.Let;
@@ -534,7 +484,6 @@ export class Importer {
     }
 
     liftIdentifier(name: string): S.Identifier {
-        this.strings.noteString(name);
         return name as S.Identifier;
     }
 
@@ -729,9 +678,6 @@ export class Importer {
         return new S.BreakStatement({ label });
     }
     liftLabel(label: string | null): S.Label | null {
-        if (label !== null) {
-            this.strings.noteString(label as string);
-        }
         return label as (S.Label | null);
     }
     liftContinueStatement(json: any): S.ContinueStatement {
@@ -899,7 +845,6 @@ export class Importer {
         // TODO: Check for |super| in object_.
         const object_ = this.liftExpression(json.object);
         const property = json.property;
-        this.strings.noteString(property);
         return new S.StaticMemberExpression({ object_, property });
     }
     liftIdentifierExpression(json: any): S.IdentifierExpression {
@@ -920,8 +865,6 @@ export class Importer {
         assertType(json.value, 'string');
 
         const value = json.value as string;
-        this.strings.noteString(value);
-
         return new S.LiteralStringExpression({ value });
     }
     liftLiteralBooleanExpression(json: any): S.LiteralBooleanExpression {
@@ -1095,7 +1038,6 @@ export class Importer {
         assertType(json.operator, 'string');
 
         const operator = json.operator as S.UnaryOperator;
-        this.strings.noteString(operator);
         const operand = this.liftExpression(json.operand);
 
         return new S.UnaryExpression({ operator, operand });
@@ -1105,7 +1047,6 @@ export class Importer {
         assertType(json.operator, 'string');
 
         const operator = json.operator as S.BinaryOperator;
-        this.strings.noteString(operator);
         const left = this.liftExpression(json.left);
         const right = this.liftExpression(json.right);
 
@@ -1136,7 +1077,6 @@ export class Importer {
         assertType(json.sticky, 'boolean');
 
         const pattern = json.pattern as string;
-        this.strings.noteString(pattern);
 
         const flagArray: Array<string> = [];
         if (json.global) { flagArray.push('g'); }
@@ -1145,7 +1085,6 @@ export class Importer {
         if (json.unicode) { flagArray.push('u'); }
         if (json.sticky) { flagArray.push('y'); }
         const flags = flagArray.join();
-        this.strings.noteString(flags);
 
         return new S.LiteralRegExpExpression({ pattern, flags });
     }
@@ -1155,7 +1094,6 @@ export class Importer {
         assertType(json.operator, 'string');
 
         const operator = json.operator as S.CompoundAssignmentOperator;
-        this.strings.noteString(operator);
         const binding = this.liftSimpleAssignmentTarget(json.binding);
         const expression = this.liftExpression(json.expression);
 
@@ -1170,7 +1108,6 @@ export class Importer {
 
         const isPrefix = json.isPrefix as boolean;
         const operator = json.operator as S.UpdateOperator;
-        this.strings.noteString(operator);
         const operand = this.liftSimpleAssignmentTarget(json.operand);
 
         return new S.UpdateExpression({ isPrefix, operator, operand });
@@ -1211,7 +1148,6 @@ export class Importer {
         assertType(json.value, 'string');
 
         const value = json.value as string;
-        this.strings.noteString(value);
         return new S.LiteralPropertyName({ value });
     }
 }

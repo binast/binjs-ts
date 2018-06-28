@@ -5,6 +5,7 @@ import { TextDecoder, TextEncoder } from 'util';
 import { rewriteAst } from './ast_util';
 import { Grammar } from './grammar';
 import { Memoizer } from './memoize';
+import { StringStripper } from './string_strip';
 import * as S from './schema';
 
 export interface WriteStream {
@@ -59,6 +60,7 @@ export class FixedSizeBufStream implements WriteStream {
         }
         return bs.length;
     }
+
     writeUint8Array(bs: Uint8Array) {
         for (const b of bs) {
             this.writeByte(b);
@@ -78,6 +80,19 @@ export class FixedSizeBufStream implements WriteStream {
         }
         if (this.curOffset) {
             s.write(this.cur.slice(0, this.curOffset));
+            bytes_written += this.curOffset;
+        }
+        return bytes_written;
+    }
+
+    copyToWriteStream(s: WriteStream): number {
+        let bytes_written = 0;
+        for (const buffer of this.priors) {
+            s.writeUint8Array(buffer);
+            bytes_written += buffer.length;
+        }
+        if (this.curOffset) {
+            s.writeUint8Array(this.cur.slice(0, this.curOffset));
             bytes_written += this.curOffset;
         }
         return bytes_written;
@@ -202,16 +217,28 @@ export class Encoder {
     readonly writeStream: WriteStream;
     readonly w: EncodingWriter;
     readonly memoizer: Memoizer;
+    readonly stripper: StringStripper;
     grammar: Grammar;
 
     constructor(params: {
         script: S.Script,
-        stringTable: StringTable,
         writeStream: WriteStream
     }) {
+        let script = params.script;
+
+        this.stripper = new StringStripper();
+        script = this.stripper.visit(script);
+
+        let strings = Array.from(new Set(this.stripper.strings));
+        strings.sort(
+            // Standard Unicode sort.
+            (a: string, b: string) => a < b ? -1 : a == b ? 0 : 1);
+        this.stringTable = new StringTable(strings);
+
         this.memoizer = new Memoizer();
-        // TODO(dpc): If eliding strings, that should happen before memoization.
-        this.script = this.memoizer.memo(params.script);
+        script = this.memoizer.memo(script);
+
+        this.script = script;
 
         // This dumps the memoization table which can be
         // useful for debugging.
@@ -226,7 +253,6 @@ export class Encoder {
             console.log(n);
         }
 
-        this.stringTable = params.stringTable;
         this.writeStream = params.writeStream;
         this.w = new EncodingWriter(this.writeStream);
         this.grammar = null;
@@ -235,27 +261,11 @@ export class Encoder {
     public encode(): void {
         this.encodeGrammar();
         this.encodeStringTable();
-        this.encodeAbstractSyntax();
+        this.encodeStringStream();
+        this.encodeAbstractSyntax(this.w);
     }
 
-    encodeStringTable() {
-        this.w.writeVarUint(this.stringTable.strings.length);
-        let stringData = [];
-        this.stringTable.eachString((s: string) => {
-            const encBytes = new TextEncoder().encode(s);
-            assert(new TextDecoder('utf-8').decode(encBytes) === s);
-            stringData.push(encBytes);
-            // Note, this is *bytes* and not characters. This lets the
-            // decoder skip chunks of the string table if it wants.
-            const len = encBytes.length;
-            this.w.writeVarUint(len);
-        });
-        stringData.forEach((encBytes: Uint8Array) => {
-            this.w.writeUint8Array(encBytes);
-        });
-    }
-
-    encodeGrammar() {
+    encodeGrammar(): void {
         this.grammar = new Grammar();
         this.grammar.visit(this.script);
         assert(this.grammar.rules.has('Script'),
@@ -272,7 +282,38 @@ export class Encoder {
         this.w.writeUint8Array(bytes);
     }
 
-    encodeAbstractSyntax(): void {
+    encodeStringTable(): void {
+        this.w.writeVarUint(this.stringTable.strings.length);
+        let stringData = [];
+        this.stringTable.eachString((s: string) => {
+            const encBytes = new TextEncoder().encode(s);
+            assert(new TextDecoder('utf-8').decode(encBytes) === s);
+            stringData.push(encBytes);
+            // Note, this is *bytes* and not characters. This lets the
+            // decoder skip chunks of the string table if it wants.
+            const len = encBytes.length;
+            this.w.writeVarUint(len);
+        });
+        stringData.forEach((encBytes: Uint8Array) => {
+            this.w.writeUint8Array(encBytes);
+        });
+    }
+
+    encodeStringStream(): void {
+        // Encode the string ID stream to learn its length.
+        let stringStream = new FixedSizeBufStream();
+        let w = new EncodingWriter(stringStream);
+        for (let value of this.stripper.strings) {
+            w.writeVarUint(this.stringTable.stringIndex(value));
+        }
+        // Write the length so that the decoder can skip this part of
+        // the stream.
+        this.w.writeVarUint(stringStream.size);
+        stringStream.copyToWriteStream(this.writeStream);
+    }
+
+    encodeAbstractSyntax(syntaxStream: WriteStream): void {
+        let w = new EncodingWriter(syntaxStream);
         let memoIndex = new Map<any, number>();
         let visit = (node) => {
             // TODO(dpc): Consider writing the child tags first. This
@@ -280,8 +321,8 @@ export class Encoder {
 
             // If the node was memoized, replay it.
             if (memoIndex.has(node)) {
-                this.w.writeVarUint(BuiltInTags.MEMO_REPLAY);
-                this.w.writeVarUint(memoIndex.get(node));
+                w.writeVarUint(BuiltInTags.MEMO_REPLAY);
+                w.writeVarUint(memoIndex.get(node));
                 return;
             }
 
@@ -289,42 +330,43 @@ export class Encoder {
             if (this.memoizer.counts.get(node) > 1) {
                 // TODO(dpc): Improve this heuristic which looks at use
                 // without regard for size.
-                this.w.writeVarUint(BuiltInTags.MEMO_RECORD);
+                // TODO(dpc): Consider making the decoder safer by
+                // only allocating this slot after the definition is done.
+                w.writeVarUint(BuiltInTags.MEMO_RECORD);
                 memoIndex.set(node, memoIndex.size);
             }
 
             if (node === null) {
-                this.w.writeVarUint(BuiltInTags.NULL);
+                w.writeVarUint(BuiltInTags.NULL);
             } else if (node === undefined) {
-                this.w.writeVarUint(BuiltInTags.UNDEFINED);
+                w.writeVarUint(BuiltInTags.UNDEFINED);
             } else if (node instanceof Array) {
-                this.w.writeVarUint(BuiltInTags.LIST);
-                this.w.writeVarUint(node.length);
+                w.writeVarUint(BuiltInTags.LIST);
+                w.writeVarUint(node.length);
                 for (let i = 0; i < node.length; i++) {
                     visit(node[i]);
                 }
-            } else if (node !== null && typeof node == 'object') {
+            } else if (typeof node == 'string') {
+                throw new Error(
+                    `encountered string in AST; strings should have been elided: "${node}"`);
+            } else if (node === this.stripper) {
+                w.writeVarUint(BuiltInTags.STRING);
+            } else if (typeof node == 'number') {
+                w.writeVarUint(BuiltInTags.NUMBER);
+                // TODO(dpc): Write this in a separate stream.
+                w.writeFloat(node);
+            } else if (typeof node == 'boolean') {
+                w.writeVarUint(
+                    node ? BuiltInTags.TRUE : BuiltInTags.FALSE);
+            } else if (typeof node == 'object') {
                 let kind = node.constructor.name;
                 //console.log(kind);
-                this.w.writeVarUint(BuiltInTags.FIRST_GRAMMAR_NODE +
+                w.writeVarUint(BuiltInTags.FIRST_GRAMMAR_NODE +
                     this.grammar.index(kind));
                 for (let property of this.grammar.rules.get(kind)) {
                     //console.log('  ', property);
                     visit(node[property]);
                 }
-            } else if (typeof node == 'string') {
-                // TODO(dpc): Are strings part of a union? If not we
-                // should not tag strings.
-                this.w.writeVarUint(BuiltInTags.STRING);
-                // TODO(dpc): Write this in a separate stream.
-                this.w.writeVarUint(this.stringTable.stringIndex(node));
-            } else if (typeof node == 'number') {
-                this.w.writeVarUint(BuiltInTags.NUMBER);
-                // TODO(dpc): Write this in a separate stream.
-                this.w.writeFloat(node);
-            } else if (typeof node == 'boolean') {
-                this.w.writeVarUint(
-                    node ? BuiltInTags.TRUE : BuiltInTags.FALSE);
             } else {
                 throw new Error(`unknown node type ${typeof node}: ${node}`);
             }

@@ -6,7 +6,8 @@ import * as S from './schema';
 import { ArrayStream } from './io';
 import { Decoder } from './decode_binast';
 import { FixedSizeBufStream, StringTable, Encoder } from './encode_binast';
-import { Importer, StringRegistry } from './parse_js';
+// TODO(dpc): Remove StringRegistry
+import { Importer } from './parse_js';
 import { parseScript } from 'shift-parser';
 
 interface EncodeOptions {
@@ -26,10 +27,8 @@ function encode(inputFilename: string, outputFilename: string, options: EncodeOp
         console.log(JSON.stringify(script, null, 2));
     }
 
-    const sr: StringRegistry = importer.strings;
-    const stringTable = new StringTable(sr.stringsInLexicographicOrder());
     const writeStream = new FixedSizeBufStream();
-    const encoder = new Encoder({ script, stringTable, writeStream });
+    const encoder = new Encoder({ script, writeStream });
     encoder.encode();
 
     const outputWriter: stream.Writable = fs.createWriteStream(outputFilename);

@@ -3,24 +3,33 @@ import { TextDecoder } from 'util';
 
 import { rewriteAst } from './ast_util';
 import { Grammar } from './grammar';
-import { ReadStream } from './io';
+import { ArrayStream, ReadStream } from './io';
 import * as S from './schema';
 import { BuiltInTags } from './encode_binast';
 
 export class Decoder {
     readonly r: ReadStream;
     public strings: string[];
+    stringStream: ReadStream;
     public grammar: Grammar;
     public program: S.Program;
 
-    constructor(readStream: ReadStream) {
-        this.r = readStream;
+    constructor(r: ReadStream) {
+        this.r = r;
     }
 
     public decode(): void {
         this.grammar = this.decodeGrammar();
         this.strings = this.decodeStringTable();
+        this.prepareStringStream();
         this.program = this.decodeAbstractSyntax();
+        // TODO(dpc): Should check that the string stream is exhausted.
+    }
+
+    decodeGrammar(): Grammar {
+        let length = this.r.readVarUint();
+        let rules = JSON.parse(this.r.readUtf8Bytes(length));
+        return new Grammar(rules);
     }
 
     decodeStringTable(): string[] {
@@ -43,13 +52,20 @@ export class Decoder {
         return strings;
     }
 
-    decodeGrammar(): Grammar {
-        let length = this.r.readVarUint();
-        let rules = JSON.parse(this.r.readUtf8Bytes(length));
-        return new Grammar(rules);
+    prepareStringStream(): void {
+        let lengthBytes = this.r.readVarUint();
+        this.stringStream = new ArrayStream(this.r.readBytes(lengthBytes));
+    }
+
+    readStringStream(): string {
+        let index = this.stringStream.readVarUint();
+        assert(0 <= index && index < this.strings.length,
+            `string stream index out of bounds: ${index} of ${this.strings.length}`);
+        return this.strings[index];
     }
 
     decodeAbstractSyntax(): S.Program {
+        // TODO(dpc): Memo table needs to keep reading from string stream.
         let memoTable: any[] = [];
         let decode = (): any => {
             let tag = this.r.readVarUint();
@@ -84,8 +100,7 @@ export class Decoder {
                 return floats[0];
             }
             if (tag === BuiltInTags.STRING) {
-                let i = this.r.readVarUint();
-                return this.strings[i];
+                return this.readStringStream();
             }
             if (tag === BuiltInTags.LIST) {
                 let n = this.r.readVarUint();
