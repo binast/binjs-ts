@@ -3,7 +3,7 @@ import { TextDecoder } from 'util';
 
 import { rewriteAst } from './ast_util';
 import { Grammar } from './grammar';
-import { ArrayStream, ReadStream } from './io';
+import { ArrayStream, ReadStream, ReadStreamRecorder } from './io';
 import * as S from './schema';
 import { BuiltInTags } from './encode_binast';
 
@@ -65,21 +65,28 @@ export class Decoder {
     }
 
     decodeAbstractSyntax(): S.Program {
-        // TODO(dpc): Memo table needs to keep reading from string stream.
+        // TODO(dpc): This could be given a more accurate type about replay-able.
         let memoTable: any[] = [];
-        let decode = (): any => {
-            let tag = this.r.readVarUint();
+        let decode = (r: ReadStream, is_replaying: boolean): any => {
+            let tag = r.readVarUint();
             if (tag === BuiltInTags.MEMO_REPLAY) {
-                let i = this.r.readVarUint();
+                let i = r.readVarUint();
                 assert(0 <= i && i < memoTable.length, '' + i);
-                return memoTable[i];
+                return decode(memoTable[i].replay(), true);
             }
             if (tag === BuiltInTags.MEMO_RECORD) {
-                let i = memoTable.length;
-                memoTable.push('<<replayed evacuated thunk>>');
-                let memento = decode();
-                memoTable[i] = memento;
-                return memento;
+                if (is_replaying) {
+                    // We're replaying a memoized part of the tree, so
+                    // *this* part is already recorded; don't memoize again.
+                    return decode(r, true);
+                } else {
+                    let i = memoTable.length;
+                    let recorder = new ReadStreamRecorder(r);
+                    memoTable.push({ replay: () => { throw Error('tried to replay evacuated thunk') } });
+                    let memento = decode(recorder, false);
+                    memoTable[i] = recorder.detach();
+                    return memento;
+                }
             }
             if (tag === BuiltInTags.NULL) {
                 return null;
@@ -94,7 +101,7 @@ export class Decoder {
                 return false;
             }
             if (tag === BuiltInTags.NUMBER) {
-                let array = this.r.readBytes(8);
+                let array = r.readBytes(8);
                 assert(array.byteLength == 8, `expected 8 bytes, but was ${array.byteLength}`);
                 let floats = new Float64Array(array.buffer);
                 return floats[0];
@@ -103,10 +110,10 @@ export class Decoder {
                 return this.readStringStream();
             }
             if (tag === BuiltInTags.LIST) {
-                let n = this.r.readVarUint();
+                let n = r.readVarUint();
                 let result = new Array(n);
                 for (let i = 0; i < n; i++) {
-                    result[i] = decode();
+                    result[i] = decode(r, is_replaying);
                 }
                 return result;
             }
@@ -115,11 +122,11 @@ export class Decoder {
             let ctor = S[kind];
             let props = {};
             for (let property of this.grammar.rules.get(kind)) {
-                props[property] = decode();
+                props[property] = decode(r, is_replaying);
             }
             return new ctor(props);
         };
-        let p = decode();
+        let p = decode(this.r, false);
         assert(p instanceof S.Script || p instanceof S.Module,
             p.constructor.name);
         return p;

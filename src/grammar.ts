@@ -95,7 +95,10 @@ export class Grammar {
             if (typeof kind !== 'string') {
                 throw Error(`node type tags should be strings, got ${kind}`);
             }
-            let props = Object.getOwnPropertyNames(node).filter((name) => name !== 'type').sort();
+            // TODO(dpc): Consider sorting these. The tree walks rely on
+            // properties being visited in the same order; explicit ordering
+            // may be less fragile.
+            let props = Array.from(Object.keys(node));
 
             let expected = this.rules.get(kind);
             if (expected && !shallowEquals(props, expected)) {
