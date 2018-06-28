@@ -267,7 +267,7 @@ export class Encoder {
             (Array
                 .from(stringFrequency.entries())
                 .sort((a, b) => b[1] - a[1])
-                .slice(0, 32)
+                .slice(0, 128)
                 .map(p => p[0])
                 .sort(lexicographicSort));
 
