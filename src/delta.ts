@@ -1,6 +1,7 @@
 import * as assert from 'assert';
 
 import { EncodingWriter, WriteStream } from './encode_binast';
+import { ReadStream } from './io';
 
 export class DeltaWriter {
     private readonly w: EncodingWriter;
@@ -38,7 +39,7 @@ export class MruDeltaWriter {
         this.numCellBits = numCellBits;
         // TODO(dpc): Consider pre-populating this to put a bunch of
         // non-literals in the range of initial deltas.
-        this.buffer = Array((1 << numCellBits - 1) - 1).fill(0);
+        this.buffer = Array((1 << numCellBits) - 1).fill(0);
         this.w = w;
     }
 
@@ -50,18 +51,16 @@ export class MruDeltaWriter {
         const numDeltaBits = BITS_PER_BYTE - this.numCellBits;
         // This is used as the limit for a small signed delta value or
         // an unsigned value with a reserved bit for continuation.
-        const smallValue = 1 << numDeltaBits - 2;
+        const smallValue = 1 << (numDeltaBits - 1);
 
         // If the value is small enough to be written as a one-byte
-        // literal, do that.
+        // literal, do that; don't add the value to the MRU.
         if (v < smallValue) {
-            this.buffer.splice(this.buffer.length - 1, 1);
-            this.buffer.splice(0, 0, v);
             return this.w.writeByte(v);
         }
 
         // Find the smallest delta.
-        const numCells = (1 << this.numCellBits - 1) - 1;
+        const numCells = (1 << this.numCellBits) - 1;
         let minI = null;
         let minDelta = +Infinity;
         this.buffer.forEach((oldValue, i) => {
@@ -104,9 +103,69 @@ export class MruDeltaWriter {
             this.buffer.splice(0, 0, v);
 
             let byte =
-                minI + 1 << numDeltaBits |
-                delta & (1 << numDeltaBits) - 1;
+                (minI + 1) << numDeltaBits |
+                (delta & ((1 << numDeltaBits) - 1));
             return this.w.writeByte(byte);
         }
+    }
+}
+
+export class MruDeltaReader {
+    private readonly numCellBits: number;
+    private readonly r: ReadStream;
+    private buffer: number[];
+
+    constructor(numCellBits: number, r: ReadStream) {
+        assert(numCellBits == 2, 'this reader is hard-coded for two cell bits');
+        this.r = r;
+        this.buffer = Array(1 << numCellBits - 1).fill(0);
+    }
+
+    readUint(): number {
+        let b = this.r.readByte();
+        let cell = (b & 0xc0) >> 6;
+        let value = b & 0x3f;
+
+        if (cell === 0) {
+            if ((value & 0x20) === 0) {
+                // Small literal unsigned int.
+                return value;
+            }
+            // Multi-byte literal unsigned int.
+            value &= 0x1f;
+            let shift = 5;
+            let more_bits;
+            do {
+                b = this.r.readByte();
+                more_bits = b & 0x80;
+                value |= (b & 0x7f) << shift;
+                shift += 7;
+            } while (more_bits);
+            this.buffer.splice(this.buffer.length - 1, 1);
+            this.buffer.splice(0, 0, value);
+            return value;
+        }
+
+        // Delta from the cell-th item.
+        cell--;
+        console.log(`delta from cell ${cell}, cells=${this.buffer}, delta=${value}`);
+
+        if (value & 0x20) {
+            // Value is negative.
+            value ^= 0x3f;
+            value++;
+            value = -value;
+        }
+        value += this.buffer[cell];
+
+        if (cell == 0) {
+            this.buffer[0] = value;
+        } else {
+            // Shuffle this cell to the head of the list.
+            this.buffer.splice(cell, 1);
+            this.buffer.splice(0, 0, value);
+        }
+
+        return value;
     }
 }

@@ -1,9 +1,10 @@
 import { expect } from 'chai';
 import { describe, it } from 'mocha';
 
-import { DeltaWriter, MruDeltaWriter } from './delta';
+import { DeltaWriter, MruDeltaReader, MruDeltaWriter } from './delta';
 
 import { FixedSizeBufStream, EncodingWriter } from './encode_binast';
+import { ArrayStream } from './io';
 
 describe('DeltaWriter', () => {
     it('should write successive values as deltas', () => {
@@ -66,4 +67,41 @@ describe('MruDeltaWriter', () => {
         expect(w.cur[2]).to.equal(0x7f); // 0x40 => MRU cell 0, delta -1
     });
     // TODO(dpc): More tests, that shuffling works, boundaries for ranges.
+});
+
+function writeRead(values: number[]): number[] {
+    let w = new FixedSizeBufStream();
+    let d = new MruDeltaWriter(2, new EncodingWriter(w));
+    for (let value of values) {
+        d.writeUint(value);
+    }
+
+    let r = new MruDeltaReader(2, new ArrayStream(w.cur));
+    let out = [];
+    for (let i = 0; i < values.length; i++) {
+        out.push(r.readUint());
+    }
+    return out;
+}
+
+describe('MruDeltaReader', () => {
+    it('should read large values', () => {
+        let values = [65535];
+        expect(writeRead(values)).to.deep.equal(values);
+    });
+
+    it('should read the values with small constants', () => {
+        let values = [0, 1, 3, 2, 0, 30, 31];
+        expect(writeRead(values)).to.deep.equal(values);
+    });
+
+    it('should read the values with small deltas', () => {
+        let values = [1000, 1001, 1002, 1005];
+        expect(writeRead(values)).to.deep.equal(values);
+    });
+
+    it('should read the values with negative deltas', () => {
+        let values = [1100, 1095];
+        expect(writeRead(values)).to.deep.equal(values);
+    });
 });
