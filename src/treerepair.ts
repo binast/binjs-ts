@@ -58,11 +58,13 @@ export class Node {
     // The digram structure. The i-th entry in this array is the
     // previous (next) occurrence of the (this.label, i, n-th child
     // label) digram in the tree.
-    prevDigram: Node[];
-    nextDigram: Node[];
+    readonly prevDigram: Node[];
+    readonly nextDigram: Node[];
 
     constructor(label: Symbol) {
         this.label = label;
+        this.prevDigram = Array(label.rank);
+        this.nextDigram = Array(label.rank);
     }
 
     debug_find(tag: string): Node | null {
@@ -77,6 +79,26 @@ export class Node {
                 return descendent;
             }
         }
+    }
+
+    // An iterator over the node's children, with their index.
+    *child_entries(): IterableIterator<[number, Node]> {
+        let i = 0;
+        let node = this.firstChild;
+        while (node) {
+            yield [i++, node];
+            node = node.nextSibling;
+        }
+    }
+
+    nth_child(i: number): Node {
+        assert(0 <= i && i < this.label.rank, `${i} out of range, rank=${this.label.rank}`);
+        for (let [j, child] of this.child_entries()) {
+            if (i === j) {
+                return child;
+            }
+        }
+        throw Error('unreachable');
     }
 }
 
@@ -135,26 +157,48 @@ export function check_tree(root: Node) {
         let tortoise_step = tortoise.next();
         assert(!tortoise_step.done, 'tortoise outpaced hare');
         if (tortoise_step.value === hare_step.value) {
-            throw 'cycle';
+            throw Error('cycle');
         }
     }
 
     for (let node of pre_order(root)) {
         if (node.firstChild) {
             if (node.firstChild.prevSibling) {
-                throw `"first" child ${node.firstChild.debug_tag} has previous sibling ${node.firstChild.prevSibling.debug_tag}`;
+                throw Error(`"first" child ${node.firstChild.debug_tag} has previous sibling ${node.firstChild.prevSibling.debug_tag}`);
             }
-            let child, i;
-            for (child = node.firstChild, i = 0;
-                child;
-                child = child.nextSibling, i++) {
+            let i = -1, child;
+            for ([i, child] of node.child_entries()) {
                 if (child.parent !== node) {
-                    throw 'parent';
+                    throw Error('parent');
                 }
             }
+            i++;
             if (i !== node.label.rank) {
-                throw `rank ${node.label.rank} node ${node.debug_tag} had ${i} children`;
+                throw Error(`rank ${node.label.rank} node ${node.debug_tag} had ${i} children`);
             }
+        }
+    }
+}
+
+// Checks that the doubly linked list of digrams on `node` are in
+// order. Unlike `check_tree` this is a local check.
+export function check_digram_step(node: Node) {
+    assert(node.prevDigram.length === node.label.rank);
+    assert(node.nextDigram.length === node.label.rank);
+
+    for (let [i, child] of node.child_entries()) {
+        let link = node.nextDigram[i];
+        if (!link) {
+            continue;
+        }
+        if (link.label !== node.label) {
+            throw Error('mismatched parent');
+        }
+        if (link.nth_child(i).label !== child.label) {
+            throw Error('mismatched child');
+        }
+        if (link.prevDigram[i] !== node) {
+            throw Error('broken back link');
         }
     }
 }

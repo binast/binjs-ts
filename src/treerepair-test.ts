@@ -1,12 +1,14 @@
 import * as tr from './treerepair';
 
-import { describe, it } from 'mocha';
+import { beforeEach, describe, it } from 'mocha';
 import { expect } from 'chai';
 
 // Manufactures a tree for testing.
-function t(debug_tag: string, ...children: tr.Node[]) {
+function t(label: tr.Symbol, debug_tag: string, ...children: tr.Node[]) {
     const rank = children.length;
-    const label = new tr.Terminal(rank);
+    if (label == null) {
+        label = new tr.Terminal(rank);
+    }
     const node = new tr.Node(label);
     node.debug_tag = debug_tag;
     let prev: tr.Node = null;
@@ -38,11 +40,11 @@ describe('pre_order', () => {
     });
     it('should produce parents before children', () => {
         const tree =
-            t('p',
-                t('q',
-                    t('r'),
-                    t('s')),
-                t('t'));
+            t(null, 'p',
+                t(null, 'q',
+                    t(null, 'r'),
+                    t(null, 's')),
+                t(null, 't'));
         expect(serialize(tr.pre_order(tree))).to.deep.equal(
             ['p', 'q', 'r', 's', 't']
         );
@@ -52,11 +54,11 @@ describe('pre_order', () => {
 describe('post_order', () => {
     it('should produce children before parents', () => {
         const tree =
-            t('p',
-                t('q',
-                    t('r'),
-                    t('s')),
-                t('t'));
+            t(null, 'p',
+                t(null, 'q',
+                    t(null, 'r'),
+                    t(null, 's')),
+                t(null, 't'));
         expect(serialize(tr.post_order(tree))).to.deep.equal(
             ['r', 's', 'q', 't', 'p']
         );
@@ -66,26 +68,26 @@ describe('post_order', () => {
 describe('check_tree', () => {
     it('should be able to detect cycles', () => {
         const tree =
-            t('p',
-                t('q',
-                    t('r'),
-                    t('s')),
-                t('t'));
+            t(null, 'p',
+                t(null, 'q',
+                    t(null, 'r'),
+                    t(null, 's')),
+                t(null, 't'));
         const s = tree.debug_find('s');
         s.nextSibling = tree;
         tree.prevSibling = s;
         tree.parent = s.parent;
 
-        expect(() => tr.check_tree(tree)).to.throw('cycle');
+        expect(() => tr.check_tree(tree)).to.throw(Error, 'cycle');
     });
 
     it('should succeed on valid trees', () => {
         const tree =
-            t('p',
-                t('q',
-                    t('r'),
-                    t('s')),
-                t('t'));
+            t(null, 'p',
+                t(null, 'q',
+                    t(null, 'r'),
+                    t(null, 's')),
+                t(null, 't'));
         tr.check_tree(tree);
     });
 
@@ -95,6 +97,38 @@ describe('check_tree', () => {
         const child = new tr.Node(new tr.Terminal(0));
         child.parent = root;
         root.firstChild = child;
-        expect(() => tr.check_tree(root)).to.throw('rank 3 node root had 1 children');
+        expect(() => tr.check_tree(root)).to.throw(Error, 'rank 3 node root had 1 children');
+    });
+});
+
+describe('check_digrams', () => {
+    const A = new tr.Terminal(2);
+    const B = new tr.Terminal(0);
+    let root, a_child;
+
+    beforeEach(() => {
+        root =
+            t(A, 'a (root)',
+                t(B, 'b',
+                    t(B, 'b (child)')),
+                t(A, 'a (child)',
+                    t(B, 'd')));
+        a_child = root.debug_find('a (child)');
+        root.nextDigram[0] = a_child;
+        a_child.prevDigram[0] = root;
+    });
+
+    it('should accept a correct digram step', () => {
+        tr.check_digram_step(root);
+    });
+
+    it('should detect a digram step with a mismatched label', () => {
+        root.nextDigram[0] = root.debug_find('b');
+        expect(() => tr.check_digram_step(root)).to.throw(Error, 'mismatched parent');
+    });
+
+    it('should detect a digram step with a broken back link', () => {
+        a_child.prevDigram[0] = null;
+        expect(() => tr.check_digram_step(root)).to.throw(Error, 'broken back link');
     });
 });
