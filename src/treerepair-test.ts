@@ -11,13 +11,14 @@ function t(debug_tag: string, ...children: tr.Node[]) {
     node.debug_tag = debug_tag;
     let prev: tr.Node = null;
     if (children.length) {
-        prev = node.firstChild = children[0];
+        node.firstChild = children[0];
     }
-    children.forEach((child, i) => {
-        child.index = i;
+    children.forEach(child => {
         child.parent = node;
         child.prevSibling = prev;
-        prev.nextSibling = child;
+        if (prev) {
+            prev.nextSibling = child;
+        }
         prev = child;
     });
     if (prev) {
@@ -76,5 +77,15 @@ describe('check_tree', () => {
         tree.parent = s.parent;
 
         expect(() => tr.check_tree(tree)).to.throw('cycle');
+    });
+
+    it('should succeed on valid trees', () => {
+        const tree =
+            t('p',
+                t('q',
+                    t('r'),
+                    t('s')),
+                t('t'));
+        tr.check_tree(tree);
     });
 });

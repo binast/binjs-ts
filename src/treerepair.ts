@@ -54,7 +54,6 @@ export class Node {
     firstChild?: Node;
     nextSibling?: Node;
     prevSibling?: Node;
-    index: number;
 
     // The digram structure. The i-th entry in this array is the
     // previous (next) occurrence of the (this.label, i, n-th child
@@ -120,9 +119,9 @@ export function* pre_order(node: Node): IterableIterator<Node> {
 }
 
 // Checks that `node` is a valid tree.
-export function check_tree(node: Node) {
-    const tortoise = pre_order(node);
-    const hare = pre_order(node);
+export function check_tree(root: Node) {
+    const tortoise = pre_order(root);
+    const hare = pre_order(root);
 
     while (true) {
         let hare_step = hare.next();
@@ -137,6 +136,21 @@ export function check_tree(node: Node) {
         assert(!tortoise_step.done, 'tortoise outpaced hare');
         if (tortoise_step.value === hare_step.value) {
             throw 'cycle';
+        }
+    }
+
+    for (let node of pre_order(root)) {
+        if (node.firstChild) {
+            if (node.firstChild.prevSibling !== null) {
+                throw `"first" child ${node.firstChild.debug_tag} has previous sibling ${node.firstChild.prevSibling.debug_tag}`;
+            }
+            for (let child = node.firstChild, i = 0;
+                child;
+                child = child.nextSibling, i++) {
+                if (child.parent !== node) {
+                    throw 'parent';
+                }
+            }
         }
     }
 }
