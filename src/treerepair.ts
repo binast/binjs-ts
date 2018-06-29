@@ -141,15 +141,19 @@ export function check_tree(root: Node) {
 
     for (let node of pre_order(root)) {
         if (node.firstChild) {
-            if (node.firstChild.prevSibling !== null) {
+            if (node.firstChild.prevSibling) {
                 throw `"first" child ${node.firstChild.debug_tag} has previous sibling ${node.firstChild.prevSibling.debug_tag}`;
             }
-            for (let child = node.firstChild, i = 0;
+            let child, i;
+            for (child = node.firstChild, i = 0;
                 child;
                 child = child.nextSibling, i++) {
                 if (child.parent !== node) {
                     throw 'parent';
                 }
+            }
+            if (i !== node.label.rank) {
+                throw `rank ${node.label.rank} node ${node.debug_tag} had ${i} children`;
             }
         }
     }

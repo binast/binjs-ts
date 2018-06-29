@@ -88,4 +88,13 @@ describe('check_tree', () => {
                 t('t'));
         tr.check_tree(tree);
     });
+
+    it('should detect the wrong rank of children', () => {
+        const root = new tr.Node(new tr.Terminal(3));
+        root.debug_tag = 'root';
+        const child = new tr.Node(new tr.Terminal(0));
+        child.parent = root;
+        root.firstChild = child;
+        expect(() => tr.check_tree(root)).to.throw('rank 3 node root had 1 children');
+    });
 });
