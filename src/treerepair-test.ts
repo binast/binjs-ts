@@ -2,7 +2,7 @@ import * as tr from './treerepair';
 
 import { beforeEach, describe, it } from 'mocha';
 import { expect } from 'chai';
-import { DigramTable } from './treerepair';
+import { DigramTable, check_digram_step } from './treerepair';
 
 // Manufactures a tree for testing.
 function t(label: tr.Symbol, debug_tag: string, ...children: tr.Node[]) {
@@ -148,5 +148,59 @@ describe('DigramTable', () => {
         const b = new tr.Terminal(3);
         const table = new tr.DigramTable();
         expect(() => table.get(a, 2, b)).to.throw(Error, 'index 2 out of range rank=2');
+    });
+});
+
+describe('Digrams', () => {
+    it('should build lists of digrams', () => {
+        const A = new tr.Terminal(2);
+        const B = new tr.Terminal(1);
+        const C = new tr.Terminal(0);
+        const root =
+            t(A, 'p',
+                t(B, 'q',
+                    t(C, 'r')),
+                t(A, 's',
+                    t(B, 't',
+                        t(C, 'u')),
+                    t(B, 'v',
+                        t(C, 'w'))));
+        let digrams = new tr.Digrams(root);
+
+        // The digram lists should be consistent.
+        // TODO(dpc): Replace this with a whole table check.
+        for (let node of tr.pre_order(root)) {
+            check_digram_step(node);
+        }
+
+        let a0b = digrams.table.get(A, 0, B);
+        expect(digrams.count(a0b)).to.equal(2);
+        let b0c = digrams.table.get(B, 0, C);
+        expect(digrams.count(b0c)).to.equal(3);
+
+        // The most profitable digram to replace is b0c.
+        expect(digrams.best()).to.equal(b0c);
+    });
+
+    it('should filter overlapping digrams', () => {
+        const A = new tr.Terminal(1);
+        const B = new tr.Terminal(0);
+        const root =
+            t(A, 'p',
+                t(A, 'q',
+                    t(A, 'r',
+                        t(A, 's',
+                            t(B, 'z')))));
+
+        let digrams = new tr.Digrams(root);
+
+        // The digram lists should be consistent.
+        // TODO(dpc): Replace this with a whole table check.
+        for (let node of tr.pre_order(root)) {
+            check_digram_step(node);
+        }
+
+        let a0a = digrams.table.get(A, 0, A);
+        expect(digrams.count(a0a)).to.equal(2);
     });
 });

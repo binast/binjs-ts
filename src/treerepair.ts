@@ -245,3 +245,76 @@ export class DigramTable {
         return child_step;
     }
 }
+
+export class DigramList {
+    digram: Digram;
+    first: Node;
+    last: Node;
+    occ: Set<Node>;
+
+    constructor(digram: Digram) {
+        this.digram = digram;
+        this.first = null;
+        this.last = null;
+        this.occ = new Set;
+    }
+
+    append(node: Node) {
+        if (this.first === null) {
+            assert(this.last === null);
+            assert(this.occ.size === 0);
+            this.first = this.last = node;
+        } else {
+            let old_last = this.last;
+            old_last.nextDigram[this.digram.index] = node;
+            node.prevDigram[this.digram.index] = old_last;
+            this.last = node;
+        }
+        this.occ.add(node);
+    }
+}
+
+export class Digrams {
+    readonly table: DigramTable;
+    private readonly digrams: Map<Digram, DigramList>;
+
+    constructor(root: Node) {
+        this.table = new DigramTable;
+        this.digrams = new Map;
+
+        // See TreeRePair paper Fig. 8.
+        for (let parent of post_order(root)) {
+            for (let [i, child] of parent.child_entries()) {
+                let digram = this.table.get(parent.label, i, child.label);
+                let list = this.digram_list(digram);
+                if (!list.occ.has(child)) {
+                    list.append(parent);
+                }
+            }
+        }
+    }
+
+    count(d: Digram): number {
+        return this.digram_list(d).occ.size;
+    }
+
+    best(): Digram {
+        let best = null;
+        // TODO(dpc): This should be replaced with a min-heap.
+        for (let list of this.digrams.values()) {
+            if (!best || best.occ.size < list.occ.size) {
+                best = list;
+            }
+        }
+        return best.digram;
+    }
+
+    private digram_list(d: Digram) {
+        let list = this.digrams.get(d);
+        if (!list) {
+            list = new DigramList(d);
+            this.digrams.set(d, list);
+        }
+        return list;
+    }
+}
