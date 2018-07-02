@@ -277,14 +277,25 @@ export class DigramList {
 export class Digrams {
     readonly table: DigramTable;
     private readonly digrams: Map<Digram, DigramList>;
+    readonly max?: number;
 
-    constructor(root: Node) {
+    constructor(root: Node, options?: { maxRank: number }) {
         this.table = new DigramTable;
         this.digrams = new Map;
+        this.max = options ? options.maxRank : null;
 
         // See TreeRePair paper Fig. 8.
         for (let parent of post_order(root)) {
             for (let [i, child] of parent.child_entries()) {
+                const pattern_rank = parent.label.rank + child.label.rank - 1;
+                if (this.max !== null && pattern_rank > this.max) {
+                    // This pattern is too large to rewrite.
+
+                    // TODO(dpc): If TreeRePair also rewrote the rules
+                    // it generated heuristics like maxrank may be
+                    // unnecessary.
+                    continue;
+                }
                 let digram = this.table.get(parent.label, i, child.label);
                 let list = this.digram_list(digram);
                 if (!list.occ.has(child)) {
@@ -306,7 +317,7 @@ export class Digrams {
                 best = list;
             }
         }
-        return best.digram;
+        return best ? best.digram : null;
     }
 
     private digram_list(d: Digram) {

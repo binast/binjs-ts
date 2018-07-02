@@ -203,4 +203,30 @@ describe('Digrams', () => {
         let a0a = digrams.table.get(A, 0, A);
         expect(digrams.count(a0a)).to.equal(2);
     });
+
+    it('should not produce digrams over maximal rank', () => {
+        const A = new tr.Terminal(3);
+        const B = new tr.Terminal(0);
+        const root =
+            t(A, 'p',
+                t(B, 'q'),
+                t(A, 'r',
+                    t(B, 's'),
+                    t(B, 't'),
+                    t(B, 'u')),
+                t(A, 'v',
+                    t(B, 'w'),
+                    t(B, 'x'),
+                    t(B, 'y')));
+
+        let digrams = new tr.Digrams(root, { maxRank: 1 });
+
+        // The digram lists should be consistent.
+        // TODO(dpc): Replace this with a whole table check.
+        for (let node of tr.pre_order(root)) {
+            check_digram_step(node);
+        }
+
+        expect(digrams.best()).to.equal(null);
+    });
 });
