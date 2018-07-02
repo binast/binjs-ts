@@ -93,6 +93,19 @@ export class Node {
         return this.firstChild ? this.firstChild.prevSiblingOrLastChild : null;
     }
 
+    // Finds the index of this node in its parent using an O(n) walk.
+    get index_slow(): number {
+        if (!this.parent) {
+            return 0;
+        }
+        for (let [i, child] of this.parent.child_entries()) {
+            if (child === this) {
+                return i;
+            }
+        }
+        throw Error('unreachable: node not found in parent\'s child list');
+    }
+
     debug_find(tag: string): Node | null {
         if (tag === this.debug_tag) {
             return this;
@@ -311,20 +324,7 @@ export class Digrams {
         // See TreeRePair paper Fig. 8.
         for (let parent of post_order(root)) {
             for (let [i, child] of parent.child_entries()) {
-                const pattern_rank = parent.label.rank + child.label.rank - 1;
-                if (this.max !== null && pattern_rank > this.max) {
-                    // This pattern is too large to rewrite.
-
-                    // TODO(dpc): If TreeRePair also rewrote the rules
-                    // it generated heuristics like maxrank may be
-                    // unnecessary.
-                    continue;
-                }
-                let digram = this.table.get(parent.label, i, child.label);
-                let list = this.digram_list(digram);
-                if (!list.occ.has(child)) {
-                    list.append(parent);
-                }
+                this.add(parent, i, child);
             }
         }
     }
@@ -352,6 +352,26 @@ export class Digrams {
             this.digrams.set(d, list);
         }
         return list;
+    }
+
+    add(parent: Node, i: number, child: Node) {
+        // TODO(dpc): The TreeRePair paper does not filter maximum
+        // rank in Fig. 29. but it does in Fig. 8. Investigate
+        // whether this is relevant to output size.
+        const pattern_rank = parent.label.rank + child.label.rank - 1;
+        if (this.max !== null && pattern_rank > this.max) {
+            // This pattern is too large to rewrite.
+
+            // TODO(dpc): If TreeRePair also rewrote the rules
+            // it generated heuristics like maxrank may be
+            // unnecessary.
+            return;
+        }
+        let digram = this.table.get(parent.label, i, child.label);
+        let list = this.digram_list(digram);
+        if (!list.occ.has(child)) {
+            list.append(parent);
+        }
     }
 
     remove(parent: Node, i: number, child: Node) {
@@ -485,6 +505,14 @@ export class Grammar {
         parent.parent = null;
         parent.prevSiblingOrLastChild = null;
         parent.nextSibling = null;
+
+        // Add in new digrams.
+        if (invocation.parent) {
+            this.digrams.add(invocation.parent, invocation.index_slow, invocation);
+        }
+        for (let [i, child] of invocation.child_entries()) {
+            this.digrams.add(invocation, i, child);
+        }
 
         return invocation;
     }

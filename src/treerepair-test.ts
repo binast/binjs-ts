@@ -274,4 +274,54 @@ describe('Grammar', () => {
         expect(serialize_labels_tags(tr.pre_order(grammar.tree))).to.deep.equal(
             serialize_labels_tags(tr.pre_order(rewritten)));
     });
+
+    it('should rewrite examples from the TreeRePair paper', () => {
+        // TreeRePair Fig. 7.
+        const BOOKS = new tr.Terminal(5);
+        const BOOK = new tr.Terminal(3);
+        const AUTHOR = new tr.Terminal(0);
+        const TITLE = new tr.Terminal(0);
+        const ISBN = new tr.Terminal(0);
+        const root =
+            t(BOOKS, undefined,
+                t(BOOK, undefined,
+                    t(AUTHOR, undefined),
+                    t(TITLE, undefined),
+                    t(ISBN, undefined)),
+                t(BOOK, undefined,
+                    t(AUTHOR, undefined),
+                    t(TITLE, undefined),
+                    t(ISBN, undefined)),
+                t(BOOK, undefined,
+                    t(AUTHOR, undefined),
+                    t(TITLE, undefined),
+                    t(ISBN, undefined)),
+                t(BOOK, undefined,
+                    t(AUTHOR, undefined),
+                    t(TITLE, undefined),
+                    t(ISBN, undefined)),
+                t(BOOK, undefined,
+                    t(AUTHOR, undefined),
+                    t(TITLE, undefined),
+                    t(ISBN, undefined)));
+
+        let grammar = new tr.Grammar(root);
+
+        let labels = new Map([[BOOKS, 'BOOKS'], [BOOK, 'BOOK'], [AUTHOR, 'AUTHOR'], [TITLE, 'TITLE'], [ISBN, 'ISBN']]);
+
+        tr.debug_print(labels, grammar.tree);
+        let new_sym;
+        let num_params = 0;
+        do {
+            new_sym = grammar.replaceBestDigram();
+            console.log('-'.repeat(20));
+            tr.debug_print(labels, grammar.tree);
+            console.log('grammar:');
+            for (let [symbol, rule] of grammar.rules.entries()) {
+                symbol.formals.forEach(s => labels.set(s, `p${num_params++}`));
+                console.log(labels.get(symbol), symbol.formals.map(s => labels.get(s)), '::=');
+                tr.debug_print(labels, rule);
+            }
+        } while (new_sym);
+    });
 });
