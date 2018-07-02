@@ -202,3 +202,46 @@ export function check_digram_step(node: Node) {
         }
     }
 }
+
+export class Digram {
+    readonly parent: Symbol;
+    readonly index: number;
+    readonly child: Symbol;
+
+    constructor(parent: Symbol, index: number, child: Symbol) {
+        assert(Number.isInteger(index));
+        if (index < 0 || parent.rank <= index) {
+            throw Error(`index ${index} out of range rank=${parent.rank}`);
+        }
+        this.parent = parent;
+        this.index = index;
+        this.child = child;
+    }
+}
+
+export class DigramTable {
+    readonly parents: Map<Symbol, Map<number, Map<Symbol, Digram>>>;
+
+    constructor() {
+        this.parents = new Map();
+    }
+
+    get(a: Symbol, i: number, b: Symbol): Digram {
+        let parent_step = this.parents.get(a);
+        if (!parent_step) {
+            parent_step = new Map();
+            this.parents.set(a, parent_step);
+        }
+        let index_step = parent_step.get(i);
+        if (!index_step) {
+            index_step = new Map();
+            parent_step.set(i, index_step);
+        }
+        let child_step = index_step.get(b);
+        if (!child_step) {
+            child_step = new Digram(a, i, b);
+            index_step.set(b, child_step);
+        }
+        return child_step;
+    }
+}

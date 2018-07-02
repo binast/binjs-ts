@@ -2,6 +2,7 @@ import * as tr from './treerepair';
 
 import { beforeEach, describe, it } from 'mocha';
 import { expect } from 'chai';
+import { DigramTable } from './treerepair';
 
 // Manufactures a tree for testing.
 function t(label: tr.Symbol, debug_tag: string, ...children: tr.Node[]) {
@@ -130,5 +131,22 @@ describe('check_digrams', () => {
     it('should detect a digram step with a broken back link', () => {
         a_child.prevDigram[0] = null;
         expect(() => tr.check_digram_step(root)).to.throw(Error, 'broken back link');
+    });
+});
+
+describe('DigramTable', () => {
+    it('should intern digrams', () => {
+        const a = new tr.Terminal(2);
+        const b = new tr.Terminal(0);
+        const table = new tr.DigramTable();
+        const a1b = table.get(a, 1, b);
+        expect(table.get(a, 1, b)).to.equal(a1b);
+    });
+
+    it('should check digrams have consistent ranks', () => {
+        const a = new tr.Terminal(2);
+        const b = new tr.Terminal(3);
+        const table = new tr.DigramTable();
+        expect(() => table.get(a, 2, b)).to.throw(Error, 'index 2 out of range rank=2');
     });
 });
