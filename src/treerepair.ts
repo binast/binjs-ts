@@ -371,16 +371,14 @@ export class Grammar {
     // Rewrites the grammar to replace the most frequent digram.
     // Returns the label of the new rule.
     replaceBestDigram(): Nonterminal {
-        const debug = false;
         const digram = this.digrams.best();
         if (!digram) {
             return null;
         }
-        let new_rank = digram.parent.rank + digram.child.rank - 1;
-        assert(this.digrams.max === null || new_rank <= this.digrams.max);
+        return this.replaceDigram(digram);
+    }
 
-        // Build a new rule for the digram's pattern.
-        let new_symbol = new Nonterminal(new_rank);
+    private ruleBodyForPattern(new_symbol: Nonterminal, digram: Digram): Node {
         let rule_tree = new Node(digram.parent);
         for (let i = 0; i < digram.index; i++) {
             rule_tree.appendChild(new Node(new_symbol.formals[i]));
@@ -395,15 +393,94 @@ export class Grammar {
             const formal = new_symbol.formals[parameter_index];
             rule_tree.appendChild(new Node(formal));
         }
-        this.rules.set(new_symbol, rule_tree);
-        console.log('new rule:');
-        let debug_labels = new Map();
-        debug_labels.set(new_symbol, '*NEW*');
-        for (let [i, param] of new_symbol.formals.entries()) {
-            debug_labels.set(param, `@${i}`);
+        return rule_tree;
+    }
+
+    // Rewrites one instance of a digram. This is a destructive
+    // operation because it adopts the children of the rewritten node,
+    // and inserts the new node in place of the old one.
+    private rewrite(parent: Node, digram: Digram, new_symbol: Nonterminal): Node {
+        let was_first_child = parent.parent && parent.parent.firstChild === parent;
+        let was_last_child = parent.parent && parent.parent.lastChild === parent;
+
+        // Build an "invocation" node which adopts this node's children.
+        let invocation = new Node(new_symbol);
+
+        let adopt_child = (child, prev) => {
+            if (prev === null) {
+                invocation.firstChild = child;
+            }
+            child.parent = invocation;
+            child.prevSiblingOrLastChild = prev;
+            if (prev) {
+                prev.nextSibling = child;
+            }
+            return child;
+        };
+
+        let prev = null;
+        for (let [i, child] of parent.child_entries()) {
+            if (i === digram.index) {
+                // This child is erased. Lift its children.
+                for (let [_, grandchild] of child.child_entries()) {
+                    prev = adopt_child(grandchild, prev);
+                }
+            } else {
+                prev = adopt_child(child, prev);
+            }
         }
+
+        if (invocation.firstChild) {
+            invocation.firstChild.prevSiblingOrLastChild = prev;
+        }
+
+        // Now replace this node with the beta-abstracted one.
+
+        invocation.parent = parent.parent;
+        invocation.nextSibling = parent.nextSibling;
+        if (invocation.nextSibling) {
+            invocation.nextSibling.prevSiblingOrLastChild = invocation;
+        }
+        invocation.prevSiblingOrLastChild = parent.prevSiblingOrLastChild;
+        if (was_first_child) {
+            parent.parent.firstChild = invocation;
+        } else if (invocation.prevSiblingOrLastChild) {
+            invocation.prevSiblingOrLastChild.nextSibling = invocation;
+        } else {
+            assert(!parent.parent && this.tree === parent,
+                'only the root node can be neither first child nor ' +
+                'have a previous sibling');
+        }
+        if (was_last_child) {
+            parent.parent.firstChild.prevSiblingOrLastChild = invocation;
+        }
+
+        // Disconnect the old node.
+        parent.parent = null;
+        parent.prevSiblingOrLastChild = null;
+        parent.nextSibling = null;
+
+        return invocation;
+    }
+
+    private replaceDigram(digram: Digram): Nonterminal {
+        const debug = false;
+        let new_rank = digram.parent.rank + digram.child.rank - 1;
+        assert(this.digrams.max === null || new_rank <= this.digrams.max);
+
+        // Build a new rule for the digram's pattern.
+        const new_symbol = new Nonterminal(new_rank);
+        this.rules.set(new_symbol, this.ruleBodyForPattern(new_symbol, digram));
+
+        let debug_labels;
         if (debug) {
-            debug_print(debug_labels, rule_tree);
+            console.log('new rule:');
+            let debug_labels = new Map();
+            debug_labels.set(new_symbol, '*NEW*');
+            for (let [i, param] of new_symbol.formals.entries()) {
+                debug_labels.set(param, `@${i}`);
+            }
+            debug_print(debug_labels, this.rules.get(new_symbol));
             console.log('whole tree before rewriting:');
             debug_print(debug_labels, this.tree);
         }
@@ -411,65 +488,7 @@ export class Grammar {
         // Rewrite the tree.
         let list = this.digrams.digram_list(digram);
         for (let parent of list.occ) {
-            let was_first_child = parent.parent && parent.parent.firstChild === parent;
-            let was_last_child = parent.parent && parent.parent.lastChild === parent;
-
-            // Build an "invocation" node which adopts this node's children.
-            let invocation = new Node(new_symbol);
-
-            let adopt_child = (child, prev) => {
-                if (prev === null) {
-                    invocation.firstChild = child;
-                }
-                child.parent = invocation;
-                child.prevSiblingOrLastChild = prev;
-                if (prev) {
-                    prev.nextSibling = child;
-                }
-                return child;
-            };
-
-            let prev = null;
-            for (let [i, child] of parent.child_entries()) {
-                if (i === digram.index) {
-                    // This child is erased. Lift its children.
-                    for (let [_, grandchild] of child.child_entries()) {
-                        prev = adopt_child(grandchild, prev);
-                    }
-                } else {
-                    prev = adopt_child(child, prev);
-                }
-            }
-
-            if (invocation.firstChild) {
-                invocation.firstChild.prevSiblingOrLastChild = prev;
-            }
-
-            // Now replace this node with the beta-abstracted one.
-
-            invocation.parent = parent.parent;
-            invocation.nextSibling = parent.nextSibling;
-            if (invocation.nextSibling) {
-                invocation.nextSibling.prevSiblingOrLastChild = invocation;
-            }
-            invocation.prevSiblingOrLastChild = parent.prevSiblingOrLastChild;
-            if (was_first_child) {
-                parent.parent.firstChild = invocation;
-            } else if (invocation.prevSiblingOrLastChild) {
-                invocation.prevSiblingOrLastChild.nextSibling = invocation;
-            } else {
-                assert(!parent.parent && this.tree === parent,
-                    'only the root node can be neither first child nor ' +
-                    'have a previous sibling');
-            }
-            if (was_last_child) {
-                parent.parent.firstChild.prevSiblingOrLastChild = invocation;
-            }
-
-            // Disconnect the old node.
-            parent.parent = null;
-            parent.prevSiblingOrLastChild = null;
-            parent.nextSibling = null;
+            const invocation = this.rewrite(parent, digram, new_symbol);
 
             if (parent === this.tree) {
                 this.tree = invocation;
