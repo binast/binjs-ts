@@ -353,6 +353,26 @@ export class Digrams {
         }
         return list;
     }
+
+    remove(parent: Node, i: number, child: Node) {
+        let d = this.table.get(parent.label, i, child.label);
+
+        let list = this.digram_list(d);
+        list.occ.delete(parent);
+        if (list.first === parent) {
+            list.first = parent.nextDigram[i];
+        }
+        if (list.last === parent) {
+            list.last = parent.prevDigram[i];
+        }
+
+        if (parent.prevDigram[i]) {
+            parent.prevDigram[i].nextDigram[i] = parent.nextDigram[i];
+        }
+        if (parent.nextDigram[i]) {
+            parent.nextDigram[i].prevDigram[i] = parent.prevDigram[i];
+        }
+    }
 }
 
 // TODO: appendChild should be O(1)
@@ -406,7 +426,7 @@ export class Grammar {
         // Build an "invocation" node which adopts this node's children.
         let invocation = new Node(new_symbol);
 
-        let adopt_child = (child, prev) => {
+        let adopt_child = (old_parent, i, child, prev) => {
             if (prev === null) {
                 invocation.firstChild = child;
             }
@@ -415,18 +435,24 @@ export class Grammar {
             if (prev) {
                 prev.nextSibling = child;
             }
+
+            // Remove the node from the digrams lists.
+            this.digrams.remove(old_parent, i, child);
+
             return child;
         };
 
         let prev = null;
         for (let [i, child] of parent.child_entries()) {
             if (i === digram.index) {
-                // This child is erased. Lift its children.
-                for (let [_, grandchild] of child.child_entries()) {
-                    prev = adopt_child(grandchild, prev);
+                // This child is erased.
+                this.digrams.remove(parent, i, child);
+                // Lift its children.
+                for (let [j, grandchild] of child.child_entries()) {
+                    prev = adopt_child(child, j, grandchild, prev);
                 }
             } else {
-                prev = adopt_child(child, prev);
+                prev = adopt_child(parent, i, child, prev);
             }
         }
 
