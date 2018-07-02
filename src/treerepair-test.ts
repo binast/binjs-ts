@@ -12,27 +12,22 @@ function t(label: tr.Symbol, debug_tag: string, ...children: tr.Node[]) {
     }
     const node = new tr.Node(label);
     node.debug_tag = debug_tag;
-    let prev: tr.Node = null;
-    if (children.length) {
-        node.firstChild = children[0];
-    }
     children.forEach(child => {
-        child.parent = node;
-        child.prevSibling = prev;
-        if (prev) {
-            prev.nextSibling = child;
-        }
-        prev = child;
+        node.appendChild(child);
     });
-    if (prev) {
-        prev.nextSibling = null;
-    }
     return node;
 }
 
 // Serializes a node iterator to its debug labels.
 function serialize(xs: Iterable<tr.Node>): string[] {
     return Array.from(xs, x => x.debug_tag);
+}
+
+// Serializes a node iterator to its debug labels.
+function serialize_labels_tags(xs: Iterable<tr.Node>): [tr.Symbol, string][] {
+    let mapper: ((n: tr.Node) => [tr.Symbol, string]) =
+        x => [x.label, x.debug_tag];
+    return Array.from(xs, mapper);
 }
 
 describe('pre_order', () => {
@@ -76,7 +71,7 @@ describe('check_tree', () => {
                 t(null, 't'));
         const s = tree.debug_find('s');
         s.nextSibling = tree;
-        tree.prevSibling = s;
+        tree.prevSiblingOrLastChild = s;
         tree.parent = s.parent;
 
         expect(() => tr.check_tree(tree)).to.throw(Error, 'cycle');
@@ -96,8 +91,7 @@ describe('check_tree', () => {
         const root = new tr.Node(new tr.Terminal(3));
         root.debug_tag = 'root';
         const child = new tr.Node(new tr.Terminal(0));
-        child.parent = root;
-        root.firstChild = child;
+        root.appendChild(child);
         expect(() => tr.check_tree(root)).to.throw(Error, 'rank 3 node root had 1 children');
     });
 });
@@ -228,5 +222,56 @@ describe('Digrams', () => {
         }
 
         expect(digrams.best()).to.equal(null);
+    });
+});
+
+describe('Grammar', () => {
+    it('rewrites should produce productions', () => {
+        const A = new tr.Terminal(3);
+        const B = new tr.Terminal(0);
+        const root =
+            t(A, 'p',
+                t(B, 'q'),
+                t(A, 'r',
+                    t(B, 's'),
+                    t(B, 't'),
+                    t(B, 'u')),
+                t(A, 'v',
+                    t(B, 'w'),
+                    t(B, 'x'),
+                    t(B, 'y')));
+
+        let grammar = new tr.Grammar(root);
+
+        let digram = grammar.digrams.best();
+        expect(digram).to.equal(grammar.digrams.table.get(A, 0, B));
+        let occ = grammar.digrams.digram_list(digram).occ;
+        let expected_occ = new Set([
+            root.debug_find('p'),
+            root.debug_find('r'),
+            root.debug_find('v')
+        ]);
+        expect(occ.size).to.equal(expected_occ.size);
+        for (let expected_occ_node of expected_occ) {
+            expect(occ.has(expected_occ_node)).to.equal(true);
+        }
+
+        let S = grammar.replaceBestDigram();
+        // There are three instances of A1B; they should be rewritten
+        // like this:
+        const rewritten =
+            t(S, undefined,
+                t(S, undefined,
+                    t(B, 't'),
+                    t(B, 'u')),
+                t(S, undefined,
+                    t(B, 'x'),
+                    t(B, 'y')));
+
+        //tr.debug_print(new Map([[S, 'S'], [A, 'A'], [B, 'B']]), grammar.tree);
+        //tr.debug_print(new Map([[S, 'S'], [A, 'A'], [B, 'B']]), rewritten);
+
+        expect(serialize_labels_tags(tr.pre_order(grammar.tree))).to.deep.equal(
+            serialize_labels_tags(tr.pre_order(rewritten)));
     });
 });

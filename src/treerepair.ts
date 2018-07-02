@@ -28,10 +28,10 @@ export class Nonterminal extends Symbol {
 
     constructor(rank: number) {
         super(rank);
-        this.formals = Array(rank);
-        this.formals.forEach((_, i) => {
-            this.formals[i] = new Parameter();
-        });
+        this.formals = [];
+        for (let i = 0; i < rank; i++) {
+            this.formals.push(new Parameter());
+        }
     }
 }
 
@@ -53,7 +53,9 @@ export class Node {
     parent?: Node;
     firstChild?: Node;
     nextSibling?: Node;
-    prevSibling?: Node;
+    // Note, if this node is the first child, prevSibling points to
+    // the parent's last child.
+    prevSiblingOrLastChild: Node;
 
     // The digram structure. The i-th entry in this array is the
     // previous (next) occurrence of the (this.label, i, n-th child
@@ -65,6 +67,30 @@ export class Node {
         this.label = label;
         this.prevDigram = Array(label.rank);
         this.nextDigram = Array(label.rank);
+    }
+
+    appendChild(child: Node) {
+        assert(!child.parent);
+        assert(!child.nextSibling);
+        assert(!child.prevSiblingOrLastChild);
+
+        child.parent = this;
+        if (!this.firstChild) {
+            this.firstChild = child;
+        } else {
+            child.prevSiblingOrLastChild = this.lastChild;
+            this.lastChild.nextSibling = child;
+        }
+        this.firstChild.prevSiblingOrLastChild = child;
+        return this;
+    }
+
+    get prevSibling(): Node {
+        return this.parent && this.parent.firstChild === this ? null : this.prevSiblingOrLastChild;
+    }
+
+    get lastChild(): Node {
+        return this.firstChild ? this.firstChild.prevSiblingOrLastChild : null;
     }
 
     debug_find(tag: string): Node | null {
@@ -163,8 +189,8 @@ export function check_tree(root: Node) {
 
     for (let node of pre_order(root)) {
         if (node.firstChild) {
-            if (node.firstChild.prevSibling) {
-                throw Error(`"first" child ${node.firstChild.debug_tag} has previous sibling ${node.firstChild.prevSibling.debug_tag}`);
+            if (node.firstChild.prevSiblingOrLastChild.parent !== node) {
+                throw Error(`"first" child ${node.firstChild.debug_tag} has previous sibling/last child pointer to ${node.firstChild.prevSiblingOrLastChild.debug_tag} with different parent`);
             }
             let i = -1, child;
             for ([i, child] of node.child_entries()) {
@@ -254,14 +280,12 @@ export class DigramList {
 
     constructor(digram: Digram) {
         this.digram = digram;
-        this.first = null;
-        this.last = null;
         this.occ = new Set;
     }
 
     append(node: Node) {
-        if (this.first === null) {
-            assert(this.last === null);
+        if (!this.first) {
+            assert(!this.last);
             assert(this.occ.size === 0);
             this.first = this.last = node;
         } else {
@@ -309,9 +333,10 @@ export class Digrams {
         return this.digram_list(d).occ.size;
     }
 
+    // The "best" digram is the most frequent one.
     best(): Digram {
         let best = null;
-        // TODO(dpc): This should be replaced with a min-heap.
+        // TODO(dpc): This should be replaced with a min-heap or something.
         for (let list of this.digrams.values()) {
             if (!best || best.occ.size < list.occ.size) {
                 best = list;
@@ -320,12 +345,160 @@ export class Digrams {
         return best ? best.digram : null;
     }
 
-    private digram_list(d: Digram) {
+    digram_list(d: Digram) {
         let list = this.digrams.get(d);
         if (!list) {
             list = new DigramList(d);
             this.digrams.set(d, list);
         }
         return list;
+    }
+}
+
+// TODO: appendChild should be O(1)
+
+export class Grammar {
+    rules: Map<Nonterminal, Node>;
+    tree: Node;
+    digrams: Digrams;
+
+    constructor(root: Node, options?: { maxRank: number }) {
+        this.tree = root;
+        this.rules = new Map;
+        this.digrams = new Digrams(root, options);
+    }
+
+    // Rewrites the grammar to replace the most frequent digram.
+    // Returns the label of the new rule.
+    replaceBestDigram(): Nonterminal {
+        const debug = false;
+        const digram = this.digrams.best();
+        if (!digram) {
+            return null;
+        }
+        let new_rank = digram.parent.rank + digram.child.rank - 1;
+        assert(this.digrams.max === null || new_rank <= this.digrams.max);
+
+        // Build a new rule for the digram's pattern.
+        let new_symbol = new Nonterminal(new_rank);
+        let rule_tree = new Node(digram.parent);
+        for (let i = 0; i < digram.index; i++) {
+            rule_tree.appendChild(new Node(new_symbol.formals[i]));
+        }
+        let child = new Node(digram.child);
+        rule_tree.appendChild(child);
+        for (let i = 0; i < digram.child.rank; i++) {
+            child.appendChild(new Node(new_symbol.formals[digram.index + i]));
+        }
+        for (let i = digram.index + 1; i < digram.parent.rank; i++) {
+            const parameter_index = digram.child.rank + i - 1;
+            const formal = new_symbol.formals[parameter_index];
+            rule_tree.appendChild(new Node(formal));
+        }
+        this.rules.set(new_symbol, rule_tree);
+        console.log('new rule:');
+        let debug_labels = new Map();
+        debug_labels.set(new_symbol, '*NEW*');
+        for (let [i, param] of new_symbol.formals.entries()) {
+            debug_labels.set(param, `@${i}`);
+        }
+        if (debug) {
+            debug_print(debug_labels, rule_tree);
+            console.log('whole tree before rewriting:');
+            debug_print(debug_labels, this.tree);
+        }
+
+        // Rewrite the tree.
+        let list = this.digrams.digram_list(digram);
+        for (let parent of list.occ) {
+            let was_first_child = parent.parent && parent.parent.firstChild === parent;
+            let was_last_child = parent.parent && parent.parent.lastChild === parent;
+
+            // Build an "invocation" node which adopts this node's children.
+            let invocation = new Node(new_symbol);
+
+            let adopt_child = (child, prev) => {
+                if (prev === null) {
+                    invocation.firstChild = child;
+                }
+                child.parent = invocation;
+                child.prevSiblingOrLastChild = prev;
+                if (prev) {
+                    prev.nextSibling = child;
+                }
+                return child;
+            };
+
+            let prev = null;
+            for (let [i, child] of parent.child_entries()) {
+                if (i === digram.index) {
+                    // This child is erased. Lift its children.
+                    for (let [_, grandchild] of child.child_entries()) {
+                        prev = adopt_child(grandchild, prev);
+                    }
+                } else {
+                    prev = adopt_child(child, prev);
+                }
+            }
+
+            if (invocation.firstChild) {
+                invocation.firstChild.prevSiblingOrLastChild = prev;
+            }
+
+            // Now replace this node with the beta-abstracted one.
+
+            invocation.parent = parent.parent;
+            invocation.nextSibling = parent.nextSibling;
+            if (invocation.nextSibling) {
+                invocation.nextSibling.prevSiblingOrLastChild = invocation;
+            }
+            invocation.prevSiblingOrLastChild = parent.prevSiblingOrLastChild;
+            if (was_first_child) {
+                parent.parent.firstChild = invocation;
+            } else if (invocation.prevSiblingOrLastChild) {
+                invocation.prevSiblingOrLastChild.nextSibling = invocation;
+            } else {
+                assert(!parent.parent && this.tree === parent,
+                    'only the root node can be neither first child nor ' +
+                    'have a previous sibling');
+            }
+            if (was_last_child) {
+                parent.parent.firstChild.prevSiblingOrLastChild = invocation;
+            }
+
+            // Disconnect the old node.
+            parent.parent = null;
+            parent.prevSiblingOrLastChild = null;
+            parent.nextSibling = null;
+
+            if (parent === this.tree) {
+                this.tree = invocation;
+            }
+
+            if (debug) {
+                console.log('did one substitution:');
+                debug_print(debug_labels, invocation);
+                console.log('whole tree is now:');
+                debug_print(debug_labels, this.tree);
+            }
+        }
+
+        // TODO: absorb assocs, produce new assocs
+
+        return new_symbol;
+    }
+}
+
+// Dumps a tree for debugging. May modify the label set to generate new labels.
+export function debug_print(labels: Map<any, string>, root: Node, indent?: number) {
+    let effective_indent = indent | 0;
+    let label = labels.get(root.label);
+    if (!label) {
+        label = 'L' + labels.size;
+        labels.set(root.label, label);
+    }
+    console.log('  '.repeat(effective_indent), label, root.debug_tag || '');
+    for (let [i, child] of root.child_entries()) {
+        debug_print(labels, child, effective_indent + 1);
     }
 }
