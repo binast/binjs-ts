@@ -405,7 +405,7 @@ export class Digrams {
         let best = null;
         // TODO(dpc): This should be replaced with a min-heap or something.
         for (let list of this.digrams.values()) {
-            if (!best || best.occ.size < list.occ.size && list.occ.size > 1) {
+            if ((!best || best.occ.size < list.occ.size) && list.occ.size > 1) {
                 best = list;
             }
         }
@@ -460,6 +460,24 @@ export class Digrams {
             parent.nextDigram[i].prevDigram[i] = parent.prevDigram[i];
         }
     }
+
+    addNode(node: Node) {
+        if (node.parent) {
+            this.add(node.parent, node.index_slow, node);
+        }
+        for (let [i, child] of node.child_entries()) {
+            this.add(node, i, child);
+        }
+    }
+
+    removeNode(node: Node) {
+        if (node.parent) {
+            this.remove(node.parent, node.index_slow, node);
+        }
+        for (let [i, child] of node.child_entries()) {
+            this.remove(node, i, child);
+        }
+    }
 }
 
 // TODO: appendChild should be O(1)
@@ -510,10 +528,8 @@ export class Grammar {
         let was_first_child = parent.parent && parent.parent.firstChild === parent;
         let was_last_child = parent.parent && parent.parent.lastChild === parent;
 
-        if (parent.parent) {
-            // Remove this node from the digram graph; it is going away.
-            this.digrams.remove(parent.parent, parent.index_slow, parent);
-        }
+        // Remove this node from the digram graph; it is going away.
+        this.digrams.removeNode(parent);
 
         // Build an "invocation" node which adopts this node's children.
         let invocation = new Node(new_symbol);
@@ -538,7 +554,7 @@ export class Grammar {
         for (let [i, child] of parent.child_entries()) {
             if (i === digram.index) {
                 // This child is erased.
-                this.digrams.remove(parent, i, child);
+                this.digrams.removeNode(child);
                 // Lift its children.
                 for (let [j, grandchild] of child.child_entries()) {
                     prev = adopt_child(child, j, grandchild, prev);
@@ -579,12 +595,7 @@ export class Grammar {
         parent.nextSibling = null;
 
         // Add new digrams.
-        if (invocation.parent) {
-            this.digrams.add(invocation.parent, invocation.index_slow, invocation);
-        }
-        for (let [i, child] of invocation.child_entries()) {
-            this.digrams.add(invocation, i, child);
-        }
+        this.digrams.addNode(invocation);
 
         return invocation;
     }

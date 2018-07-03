@@ -276,6 +276,9 @@ describe('Grammar', () => {
     });
 
     it('should rewrite examples from the TreeRePair paper', () => {
+        // Set `debug` to true to print the algorithm as it operates
+        const debug = false;
+
         // TreeRePair Fig. 7.
         const BOOKS = new tr.Terminal(5);
         const BOOK = new tr.Terminal(3);
@@ -309,7 +312,9 @@ describe('Grammar', () => {
 
         let labels = new Map([[BOOKS, 'BOOKS'], [BOOK, 'BOOK'], [AUTHOR, 'AUTHOR'], [TITLE, 'TITLE'], [ISBN, 'ISBN']]);
 
-        tr.debug_print(labels, grammar.tree);
+        if (debug) {
+            tr.debug_print(labels, grammar.tree);
+        }
         let new_sym;
         let num_params = 0;
         do {
@@ -320,13 +325,15 @@ describe('Grammar', () => {
             }
 
             new_sym = grammar.replaceBestDigram();
-            console.log('-'.repeat(20));
-            tr.debug_print(labels, grammar.tree);
-            console.log('grammar:');
-            for (let [symbol, rule] of grammar.rules.entries()) {
-                symbol.formals.forEach(s => labels.set(s, `p${num_params++}`));
-                console.log(labels.get(symbol), symbol.formals.map(s => labels.get(s)), '::=');
-                tr.debug_print(labels, rule);
+            if (debug) {
+                console.log('-'.repeat(20));
+                tr.debug_print(labels, grammar.tree);
+                console.log('grammar:');
+                for (let [symbol, rule] of grammar.rules.entries()) {
+                    symbol.formals.forEach(s => labels.set(s, `p${num_params++}`));
+                    console.log(labels.get(symbol), symbol.formals.map(s => labels.get(s)), '::=');
+                    tr.debug_print(labels, rule);
+                }
             }
         } while (new_sym);
     });
