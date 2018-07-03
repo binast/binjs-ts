@@ -313,6 +313,12 @@ describe('Grammar', () => {
         let new_sym;
         let num_params = 0;
         do {
+            tr.check_tree(grammar.tree);
+            tr.check_digrams(labels, grammar);
+            for (let rule of grammar.rules.values()) {
+                tr.check_tree(rule);
+            }
+
             new_sym = grammar.replaceBestDigram();
             console.log('-'.repeat(20));
             tr.debug_print(labels, grammar.tree);

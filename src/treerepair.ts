@@ -7,6 +7,10 @@ export abstract class Symbol {
     constructor(rank: number) {
         this.rank = rank;
     }
+
+    format(labels: Map<Symbol, string>): string {
+        return labels.get(this) || '?';
+    }
 }
 
 // A terminal is the literal name of a tree node. It can appear in the
@@ -219,6 +223,65 @@ export function check_tree(root: Node) {
     }
 }
 
+function check_is_subtree(root: Node, n: Node) {
+    while (n !== root && n.parent) {
+        n = n.parent;
+    }
+    if (n === root) {
+        return;
+    }
+    assert(false, 'expected node to be a subtree');
+}
+
+// Checks that the digrams table and links are consistent.
+export function check_digrams(labels: Map<Symbol, string>, grammar: Grammar) {
+    for (let [digram, list] of grammar.digrams.digrams.entries()) {
+        assert(digram === list.digram, 'list filed under wrong digram');
+        assert(!list.first ||
+            list.first.label === digram.parent &&
+            list.first.nth_child(digram.index).label === digram.child,
+            `${digram.format(labels)} "first" pointing to wrong digram ${list.first ? list.first.label.format(labels) : 'unreachable'} ${digram.index} ${list.first ? list.first.nth_child(digram.index).label.format(labels) : 'unreachable'}`);
+        assert(!list.last ||
+            list.last.label === digram.parent &&
+            list.last.nth_child(digram.index).label === digram.child,
+            'digram list "last" pointing to wrong digram');
+        assert(list.first ? list.last : !list.last,
+            'digram list with a head (tail) must have a tail (head)');
+        assert(!list.last || !list.last.nextDigram[digram.index],
+            'the last item of the list must not have a "next" item');
+
+        if (list.first) {
+            // Check for cycles
+            let tortoise = list.first;
+            let hare = list.first;
+            while (true) {
+                hare = hare.nextDigram[digram.index];
+                if (hare == null) {
+                    break;
+                }
+                hare = hare.nextDigram[digram.index];
+                if (hare == null) {
+                    break;
+                }
+                tortoise = tortoise.nextDigram[digram.index];
+                assert(hare !== tortoise, 'cyclic digram list');
+                check_is_subtree(grammar.tree, tortoise);
+            }
+
+            while (tortoise.nextDigram[digram.index]) {
+                // Continue walking to the end of the list.
+                tortoise = tortoise.nextDigram[digram.index];
+                check_is_subtree(grammar.tree, tortoise);
+            }
+            assert(tortoise === list.last, 'last not pointing to end of list');
+        }
+    }
+
+    for (let node of pre_order(grammar.tree)) {
+        check_digram_step(node);
+    }
+}
+
 // Checks that the doubly linked list of digrams on `node` are in
 // order. Unlike `check_tree` this is a local check.
 export function check_digram_step(node: Node) {
@@ -255,6 +318,10 @@ export class Digram {
         this.parent = parent;
         this.index = index;
         this.child = child;
+    }
+
+    format(labels: Map<Symbol, string>): string {
+        return `${labels.get(this.parent) || '?'} ${this.index} ${labels.get(this.child) || '?'}`;
     }
 }
 
@@ -313,7 +380,7 @@ export class DigramList {
 
 export class Digrams {
     readonly table: DigramTable;
-    private readonly digrams: Map<Digram, DigramList>;
+    readonly digrams: Map<Digram, DigramList>;
     readonly max?: number;
 
     constructor(root: Node, options?: { maxRank: number }) {
@@ -338,7 +405,7 @@ export class Digrams {
         let best = null;
         // TODO(dpc): This should be replaced with a min-heap or something.
         for (let list of this.digrams.values()) {
-            if (!best || best.occ.size < list.occ.size) {
+            if (!best || best.occ.size < list.occ.size && list.occ.size > 1) {
                 best = list;
             }
         }
@@ -443,6 +510,11 @@ export class Grammar {
         let was_first_child = parent.parent && parent.parent.firstChild === parent;
         let was_last_child = parent.parent && parent.parent.lastChild === parent;
 
+        if (parent.parent) {
+            // Remove this node from the digram graph; it is going away.
+            this.digrams.remove(parent.parent, parent.index_slow, parent);
+        }
+
         // Build an "invocation" node which adopts this node's children.
         let invocation = new Node(new_symbol);
 
@@ -506,7 +578,7 @@ export class Grammar {
         parent.prevSiblingOrLastChild = null;
         parent.nextSibling = null;
 
-        // Add in new digrams.
+        // Add new digrams.
         if (invocation.parent) {
             this.digrams.add(invocation.parent, invocation.index_slow, invocation);
         }
