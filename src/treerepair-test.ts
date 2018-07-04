@@ -372,5 +372,6 @@ describe('prune_rule', () => {
             tr.debug_print(debug_labels, grammar.tree);
         }
         expect(serialize_labels_tags(tr.pre_order(grammar.tree))).to.deep.equal(expected);
+        expect(grammar.rules.has(symbol)).to.equal(false);
     });
 });

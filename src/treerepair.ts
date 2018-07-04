@@ -1,4 +1,5 @@
 import * as assert from 'assert';
+import * as Heap from 'heap';
 
 // A symbol is something which can appear in a tree.
 export abstract class Symbol {
@@ -235,7 +236,7 @@ function check_is_subtree(root: Node, n: Node) {
 
 // Checks that the digrams table and links are consistent.
 export function check_digrams(labels: Map<Symbol, string>, grammar: Grammar) {
-    for (let [digram, list] of grammar.digrams.digrams.entries()) {
+    for (let [digram, list] of grammar.digrams.digrams) {
         assert(digram === list.digram, 'list filed under wrong digram');
         assert(!list.first ||
             list.first.label === digram.parent &&
@@ -382,11 +383,13 @@ export class Digrams {
     readonly table: DigramTable;
     readonly digrams: Map<Digram, DigramList>;
     readonly max?: number;
+    readonly frequency: Heap<Digram>;
 
     constructor(root: Node, options?: { maxRank: number }) {
         this.table = new DigramTable;
         this.digrams = new Map;
         this.max = options ? options.maxRank : null;
+        this.frequency = new Heap((a: DigramList, b: DigramList): number => b.occ.size - a.occ.size);
 
         // See TreeRePair paper Fig. 8.
         for (let parent of post_order(root)) {
@@ -402,6 +405,9 @@ export class Digrams {
 
     // The "best" digram is the most frequent one.
     best(): Digram {
+        let best = this.frequency.pop();
+        return best ? best.digram : null;
+        /*
         let best = null;
         // TODO(dpc): This should be replaced with a min-heap or something.
         for (let list of this.digrams.values()) {
@@ -410,6 +416,7 @@ export class Digrams {
             }
         }
         return best ? best.digram : null;
+*/
     }
 
     digram_list(d: Digram) {
@@ -480,10 +487,27 @@ export class Digrams {
     }
 }
 
+// Statistics about how a rule is used and how much it saves.
+// Statistics for the implicit start symbol have symbol `null`.
+class RuleStats {
+    symbol?: Nonterminal;
+    ref_count: number;
+    size: number;
+
+    constructor(symbol: Nonterminal) {
+        this.symbol = symbol;
+        this.ref_count = 0;
+        this.size = 0;
+    }
+};
+
 export class Grammar {
     rules: Map<Nonterminal, Node>;
     tree: Node;
     digrams: Digrams;
+    stats: Map<Nonterminal, RuleStats>;
+    // Maps non-terminals to the set of productions they reference.
+    graph: Map<Nonterminal, Set<Nonterminal>>;
 
     constructor(root: Node, options?: { maxRank: number }) {
         this.tree = root;
@@ -657,12 +681,69 @@ export class Grammar {
         return new_symbol;
     }
 
-    // Erases a rule from the grammar by applying it.
+    // Walks the grammar and records statistics:
+    // - Number of references to a nonterminal.
+    // - "Savings" of each rule.
+    // - Hierarchical order.
+    compute_stats(): void {
+        // key => value means non-terminal 'key' appears in grammar rule 'value'
+        let graph = new Map<Nonterminal, Set<Nonterminal>>();
+        let add_edge = (from: Nonterminal, to: Nonterminal): void => {
+            if (!to) {
+                // This is an edge to the start rule; we always
+                // process the start rule and do not need to record
+                // it.
+                return;
+            }
+            let users = graph.get(from);
+            if (!users) {
+                users = new Set<Nonterminal>();
+                graph.set(from, users);
+            }
+            users.add(to);
+        };
+
+        this.graph = new Map<Nonterminal, Set<Nonterminal>>();
+
+        this.stats = new Map<Nonterminal, RuleStats>();
+        this.stats.set(null, new RuleStats(null));
+        for (let symbol of this.rules.keys()) {
+            this.graph.set(symbol, new Set());
+            this.stats.set(symbol, new RuleStats(symbol));
+        }
+
+        let visit = (stats: RuleStats, body: Node): void => {
+            stats.size++;
+            if (body.label instanceof Nonterminal) {
+                this.stats.get(body.label).ref_count++;
+                add_edge(body.label, stats.symbol);
+            }
+            for (let child = body.firstChild; child; child = child.nextSibling) {
+                visit(stats, child);
+            }
+        };
+        visit(this.stats.get(null), this.tree);
+        for (let [symbol, body] of this.rules) {
+            visit(this.stats.get(symbol), body);
+        }
+
+        // Now invert the graph
+        for (let [from, tos] of graph) {
+            for (let to of tos) {
+                this.graph.get(to).add(from);
+            }
+        }
+
+        // TODO(dpc): Add a heap.
+    }
+
+    // Erases a rule from the grammar by applying it. Note, after
+    // pruning, the digrams chart is no longer maintained.
     prune(symbol: Nonterminal): void {
         const body = this.rules.get(symbol);
         this.rules.delete(symbol);
         assert(body, 'pruned rule not in table');
-        for (let [s, rule] of this.rules.entries()) {
+        for (let [s, rule] of this.rules) {
             this.rules.set(s, apply_rule(rule, symbol, body));
         }
         this.tree = apply_rule(this.tree, symbol, body);

@@ -14,6 +14,7 @@
   "author": "Kannan Vijayan <kannan@vijayan.ca>",
   "license": "GPLv3",
   "dependencies": {
+    "heap": "^0.2.6",
     "shift-parser": ">=5.2.4",
     "typescript": ">=2.8.3"
   },
