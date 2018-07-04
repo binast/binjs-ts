@@ -405,18 +405,8 @@ export class Digrams {
 
     // The "best" digram is the most frequent one.
     best(): Digram {
-        let best = this.frequency.pop();
-        return best ? best.digram : null;
-        /*
-        let best = null;
-        // TODO(dpc): This should be replaced with a min-heap or something.
-        for (let list of this.digrams.values()) {
-            if ((!best || best.occ.size < list.occ.size) && list.occ.size > 1) {
-                best = list;
-            }
-        }
-        return best ? best.digram : null;
-*/
+        let best = this.frequency.peek();
+        return best && best.occ.size > 1 ? best.digram : null;
     }
 
     digram_list(d: Digram) {
@@ -424,6 +414,7 @@ export class Digrams {
         if (!list) {
             list = new DigramList(d);
             this.digrams.set(d, list);
+            this.frequency.push(list);
         }
         return list;
     }
@@ -445,6 +436,7 @@ export class Digrams {
         let list = this.digram_list(digram);
         if (!list.occ.has(child)) {
             list.append(parent);
+            this.frequency.updateItem(list);
         }
     }
 
@@ -453,6 +445,7 @@ export class Digrams {
 
         let list = this.digram_list(d);
         list.occ.delete(parent);
+        this.frequency.updateItem(list);
         if (list.first === parent) {
             list.first = parent.nextDigram[i];
         }
