@@ -480,8 +480,6 @@ export class Digrams {
     }
 }
 
-// TODO: appendChild should be O(1)
-
 export class Grammar {
     rules: Map<Nonterminal, Node>;
     tree: Node;
@@ -661,7 +659,82 @@ export class Grammar {
 
     // Erases a rule from the grammar by applying it.
     prune(symbol: Nonterminal): void {
-        // TODO: implement
+        const body = this.rules.get(symbol);
+        this.rules.delete(symbol);
+        assert(body, 'pruned rule not in table');
+        for (let [s, rule] of this.rules.entries()) {
+            this.rules.set(s, apply_rule(rule, symbol, body));
+        }
+        this.tree = apply_rule(this.tree, symbol, body);
+    }
+}
+
+// TODO(dpc): Maybe apply_rule should use an overlay tree of instances too.
+
+// Applies a rule to `tree` and returns the new tree. This reuses
+// `tree`, which may be destructively modified.
+function apply_rule(tree: Node, symbol: Nonterminal, replacement: Node): Node {
+    let mapper = (node) => {
+        node = apply_rule_at(node, symbol, replacement);
+        map_children(node, mapper);
+        return node;
+    };
+    return mapper(tree);
+}
+
+// Applies a rule if it matches exactly at `node`.
+function apply_rule_at(node: Node, symbol: Nonterminal, replacement: Node): Node {
+    if (node.label !== symbol) {
+        return node;
+    }
+    const args = Array.from(node.child_entries());
+    const replacements = new Map<Parameter, Node>();
+    for (let param of symbol.formals) {
+        replacements.set(param, args[replacements.size][1]);
+    }
+    return clone_tree(replacement, replacements);
+}
+
+// Produces a clone of `tree`; if a node labeled with a key of
+// `replacements` appears it is replaced. Note, the replacements are
+// not cloned.
+function clone_tree(tree: Node, replacements: Map<Parameter, Node>) {
+    if (tree.label instanceof Parameter && replacements.has(tree.label)) {
+        let replacement = replacements.get(tree.label);
+        // Steal the replacement node.
+        replacements.delete(tree.label);
+        replacement.prevSiblingOrLastChild = null;
+        replacement.nextSibling = null;
+        replacement.parent = null;
+        return replacement;
+    }
+    const clone = new Node(tree.label);
+    for (let child = tree.firstChild; child; child = child.nextSibling) {
+        clone.appendChild(clone_tree(child, replacements));
+    }
+    return clone;
+}
+
+// Rewrites tree by mapping its children 1:1. The walk relies on
+// pointers being intact so do not modify the next sibling pointer of
+// the argument. `map_children` establishes those links again, so it
+// is OK to return disconnected nodes; they will be wired up.
+function map_children(tree: Node, f: ((Node) => Node)): void {
+    let prev = null;
+    for (let [i, child] of tree.child_entries()) {
+        let new_child = f(child);
+        if (i == 0) {
+            tree.firstChild = new_child;
+        } else {
+            assert(prev);
+            prev.nextSibling = new_child;
+        }
+        new_child.prevSiblingOrLastChild = prev;
+        prev = new_child;
+    }
+    if (tree.firstChild) {
+        tree.firstChild.prevSiblingOrLastChild = prev;
+        prev.nextSibling = null;
     }
 }
 

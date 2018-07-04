@@ -341,6 +341,8 @@ describe('Grammar', () => {
 
 describe('prune_rule', () => {
     it('should remove pruned rules', () => {
+        const debug = false;
+        const debug_labels = new Map;
         const A = new tr.Terminal(2);
         const B = new tr.Terminal(0);
         const root =
@@ -353,10 +355,22 @@ describe('prune_rule', () => {
                         t(B),
                         t(B)),
                     t(B)));
+        if (debug) {
+            console.log('original tree');
+            tr.debug_print(debug_labels, root);
+        }
         const expected = serialize_labels_tags(tr.pre_order(root));
         const grammar = new tr.Grammar(root);
         const symbol = grammar.replaceBestDigram();
+        if (debug) {
+            console.log('after replacing best digram');
+            tr.debug_print(debug_labels, grammar.tree);
+        }
         grammar.prune(symbol);
+        if (debug) {
+            console.log('after pruning that symbol');
+            tr.debug_print(debug_labels, grammar.tree);
+        }
         expect(serialize_labels_tags(tr.pre_order(grammar.tree))).to.deep.equal(expected);
     });
 });
