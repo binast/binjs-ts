@@ -524,7 +524,19 @@ export class Grammar {
     // Rewrites one instance of a digram. This is a destructive
     // operation because it adopts the children of the rewritten node,
     // and inserts the new node in place of the old one.
-    private rewrite(parent: Node, digram: Digram, new_symbol: Nonterminal): Node {
+    private rewrite(parent: Node, digram: Digram, new_symbol: Nonterminal, debug_labels: Map<Symbol, string>): Node {
+        const debug = !!debug_labels;
+        if (debug) {
+            console.log(`digram index = ${digram.index}`);
+            if (parent.parent) {
+                console.log(`will rewrite ${parent.index_slow}-th child:`);
+                debug_print(debug_labels, parent.parent);
+            } else {
+                console.log(`will rewrite root:`);
+                debug_print(debug_labels, parent);
+            }
+        }
+
         let was_first_child = parent.parent && parent.parent.firstChild === parent;
         let was_last_child = parent.parent && parent.parent.lastChild === parent;
 
@@ -555,7 +567,7 @@ export class Grammar {
             if (i === digram.index) {
                 // This child is erased.
                 this.digrams.removeNode(child);
-                // Lift its children.
+                // Lift its children, if any.
                 for (let [j, grandchild] of child.child_entries()) {
                     prev = adopt_child(child, j, grandchild, prev);
                 }
@@ -566,6 +578,7 @@ export class Grammar {
 
         if (invocation.firstChild) {
             invocation.firstChild.prevSiblingOrLastChild = prev;
+            prev.nextSibling = null;
         }
 
         // Now replace this node with the beta-abstracted one.
@@ -595,6 +608,10 @@ export class Grammar {
         parent.nextSibling = null;
 
         // Add new digrams.
+        if (debug) {
+            console.log('invocation:');
+            debug_print(debug_labels, invocation);
+        }
         this.digrams.addNode(invocation);
 
         return invocation;
@@ -612,8 +629,8 @@ export class Grammar {
         let debug_labels;
         if (debug) {
             console.log('new rule:');
-            let debug_labels = new Map();
-            debug_labels.set(new_symbol, '*NEW*');
+            debug_labels = new Map();
+            debug_labels.set(new_symbol, `S${this.rules.size}`);
             for (let [i, param] of new_symbol.formals.entries()) {
                 debug_labels.set(param, `@${i}`);
             }
@@ -625,7 +642,7 @@ export class Grammar {
         // Rewrite the tree.
         let list = this.digrams.digram_list(digram);
         for (let parent of list.occ) {
-            const invocation = this.rewrite(parent, digram, new_symbol);
+            const invocation = this.rewrite(parent, digram, new_symbol, debug_labels);
 
             if (parent === this.tree) {
                 this.tree = invocation;
@@ -639,9 +656,12 @@ export class Grammar {
             }
         }
 
-        // TODO: absorb assocs, produce new assocs
-
         return new_symbol;
+    }
+
+    // Erases a rule from the grammar by applying it.
+    prune(symbol: Nonterminal): void {
+        // TODO: implement
     }
 }
 

@@ -5,7 +5,7 @@ import { expect } from 'chai';
 import { DigramTable, check_digram_step } from './treerepair';
 
 // Manufactures a tree for testing.
-function t(label: tr.Symbol, debug_tag: string, ...children: tr.Node[]) {
+function t(label: tr.Symbol, debug_tag?: string, ...children: tr.Node[]) {
     const rank = children.length;
     if (label == null) {
         label = new tr.Terminal(rank);
@@ -336,5 +336,27 @@ describe('Grammar', () => {
                 }
             }
         } while (new_sym);
+    });
+});
+
+describe('prune_rule', () => {
+    it('should remove pruned rules', () => {
+        const A = new tr.Terminal(2);
+        const B = new tr.Terminal(0);
+        const root =
+            t(A, undefined,
+                t(A, undefined,
+                    t(B),
+                    t(B)),
+                t(A, undefined,
+                    t(A, undefined,
+                        t(B),
+                        t(B)),
+                    t(B)));
+        const expected = serialize_labels_tags(tr.pre_order(root));
+        const grammar = new tr.Grammar(root);
+        const symbol = grammar.replaceBestDigram();
+        grammar.prune(symbol);
+        expect(serialize_labels_tags(tr.pre_order(grammar.tree))).to.deep.equal(expected);
     });
 });
