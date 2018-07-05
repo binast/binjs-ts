@@ -486,21 +486,25 @@ export class Digrams {
 // Statistics for the implicit start symbol have symbol `null`.
 class RuleStats {
     symbol?: Nonterminal;
-    ref_count: number;
     size: number;
+    ref_count: number;
 
     constructor(symbol: Nonterminal) {
         this.symbol = symbol;
-        this.ref_count = 0;
         this.size = 0;
+        this.ref_count = 0;
     }
 };
+
+type UseCount = Map<Nonterminal, Map<Nonterminal, number>>;
 
 export class Grammar {
     rules: Map<Nonterminal, Node>;
     tree: Node;
     digrams: Digrams;
     stats: Map<Nonterminal, RuleStats>;
+    uses: UseCount;
+    used_by: UseCount;
 
     constructor(root: Node, options?: { maxRank: number }) {
         this.tree = root;
@@ -680,32 +684,35 @@ export class Grammar {
     // - Hierarchical order.
     compute_stats(): Nonterminal[] {
         // key => value means non-terminal 'key' references grammar rule 'value'
-        let graph = new Map<Nonterminal, Set<Nonterminal>>();
+        let graph = new Map<Nonterminal, Map<Nonterminal, number>>();
         // key => value means non-terminal 'key' is referenced by rule 'value'
-        let inv_graph = new Map<Nonterminal, Set<Nonterminal>>();
+        let inv_graph = new Map<Nonterminal, Map<Nonterminal, number>>();
+        this.uses = graph;
+        this.used_by = inv_graph;
+
+        let increment = (g: UseCount, t: Nonterminal, u: Nonterminal): void => {
+            let counts = g.get(t);
+            counts.set(u, counts.get(u) || 0);
+        };
         let add_edge = (from: Nonterminal, to: Nonterminal): void => {
-            if (!from) {
-                // This is an edge to the start rule; we always
-                // process the start rule and do not need to record
-                // it.
-                return;
-            }
-            graph.get(from).add(to);
-            graph.get(to).add(from);
+            this.stats.get(to).ref_count++;
+            increment(graph, from, to);
+            increment(inv_graph, to, from);
         };
 
         this.stats = new Map<Nonterminal, RuleStats>();
         this.stats.set(null, new RuleStats(null));
+        graph.set(null, new Map());
+        inv_graph.set(null, new Map());
         for (let symbol of this.rules.keys()) {
-            graph.set(symbol, new Set());
-            inv_graph.set(symbol, new Set());
+            graph.set(symbol, new Map());
+            inv_graph.set(symbol, new Map());
             this.stats.set(symbol, new RuleStats(symbol));
         }
 
         let visit = (stats: RuleStats, body: Node): void => {
             stats.size++;
             if (body.label instanceof Nonterminal) {
-                this.stats.get(body.label).ref_count++;
                 add_edge(stats.symbol, body.label);
             }
             for (let child = body.firstChild; child; child = child.nextSibling) {
@@ -719,13 +726,15 @@ export class Grammar {
 
         // Compute the transitive closure of the graph.
         let work = Array.from(graph.keys());
+        let mapper = (entry: [Nonterminal, Map<Nonterminal, number>]): [Nonterminal, Set<Nonterminal>] => [entry[0], new Set(entry[1].keys())];
+        let closure = new Map(Array.from(graph.entries()).map(mapper));
         while (work.length) {
             const t = work.pop();
-            const reachable = graph.get(t);
+            const reachable = closure.get(t);
             let changed = false;
             for (let step of reachable) {
                 assert(step !== t, 'grammar is not linear');
-                for (let next_step of graph.get(step)) {
+                for (let next_step of closure.get(step)) {
                     if (!reachable.has(next_step)) {
                         reachable.add(next_step);
                         changed = true;
@@ -733,26 +742,92 @@ export class Grammar {
                 }
             }
             if (changed) {
-                for (let predecessor of inv_graph.get(t)) {
+                for (let predecessor of inv_graph.get(t).keys()) {
                     work.push(predecessor);
                 }
             }
         }
         // We get "reverse hierarchical order" by sorting the size of
         // the transitive closure of the graph.
-        return Array.from(graph.entries()).sort((a, b) => b[1].size - a[1].size).map(a => a[0]);
+        return Array.from(closure.entries()).sort((a, b) => b[1].size - a[1].size).map(a => a[0]);
+    }
+
+    optimize(): void {
+        let order = this.compute_stats();
+
+        // First prune rules with only one reference.
+        // TODO: should maintain a heap and do this to a fixed point
+        for (let [t, stats] of this.stats) {
+            assert(stats.ref_count > 0 || t === null);
+            if (stats.ref_count == 1) {
+                this.prune(t);
+            }
+        }
+
+        // Now consider whether nodes save space:
+        for (let t of order) {
+            if (!this.rules.has(t)) {
+                continue; // Already pruned.
+            }
+            // Calculate savings.
+            const size = this.stats.get(t).size;
+            const savings = this.stats.get(t).ref_count * (size - t.rank - 1) - size;
+            if (savings <= 0) {
+                this.prune(t);
+            }
+        }
     }
 
     // Erases a rule from the grammar by applying it. Note, after
     // pruning, the digrams chart is no longer maintained.
     prune(symbol: Nonterminal): void {
+        assert(this.uses && this.used_by, 'must call compute_stats first');
+        const symbol_stats = this.stats.get(symbol);
         const body = this.rules.get(symbol);
-        this.rules.delete(symbol);
         assert(body, 'pruned rule not in table');
-        for (let [s, rule] of this.rules) {
-            this.rules.set(s, apply_rule(rule, symbol, body));
+        // Any rule which used 'symbol'...
+        for (let [s, count_symbol_in_s] of this.used_by.get(symbol)) {
+            // ...is rewritten.
+            let rule = this.rules.get(s);
+            // TODO(dpc): Just use a start symbol and make this part of the graph
+            if (s === null) {
+                this.tree = apply_rule(this.tree, symbol, body);
+            } else {
+                this.rules.set(s, apply_rule(rule, symbol, body));
+            }
+
+            // Changes size:
+            // (-1, the node naming 'symbol'
+            //  + symbol_stats.size, the size of the replacement tree, which includes parameters
+            //  - symbol.rank, correct for parameters
+            // ) * count_symbol_in s, ...at each replacement site
+            this.stats.get(s).size += (symbol_stats.size - symbol.rank - 1) * count_symbol_in_s;
+
+            const s_uses = this.uses.get(s);
+            // ...now uses the things symbol used.
+            for (let [t, count_t_in_symbol] of this.uses.get(symbol)) {
+                let delta = count_t_in_symbol * count_symbol_in_s;
+                s_uses.set(t, delta + s_uses.get(t) || 0);
+                this.stats.get(t).ref_count += delta;
+
+                // TODO: One of these could be a set because the information should be reflexive
+                let t_used_by = this.used_by.get(t);
+                t_used_by.set(s, delta + t_used_by.get(s) || 0);
+            }
+            // ...no longer uses 'symbol'.
+            s_uses.delete(symbol);
         }
-        this.tree = apply_rule(this.tree, symbol, body);
+        // Any rule used by 'symbol'...
+        for (let s of this.uses.get(symbol).keys()) {
+            const s_used_by = this.used_by.get(s);
+            // ...no longer used by symbol.
+            this.stats.get(s).ref_count -= s_used_by.get(symbol);
+            s_used_by.delete(symbol);
+        }
+        this.rules.delete(symbol);
+        this.stats.delete(symbol);
+        this.used_by.delete(symbol);
+        this.uses.delete(symbol);
     }
 }
 

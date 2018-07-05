@@ -353,7 +353,80 @@ describe('Grammar', () => {
         grammar.rules.set(Q, t(C));
         let order = grammar.compute_stats();
         // P before Q because P references Q.
-        expect(order).to.deep.equal([P, Q]);
+        expect(order).to.deep.equal([null, P, Q]);
+    });
+
+    it('should optimize examples from the TreeRePair paper', () => {
+        // Set `debug` to true to print the algorithm as it operates
+        const debug = false;
+
+        // TreeRePair Fig. 7.
+        const BOOKS = new tr.Terminal(5);
+        const BOOK = new tr.Terminal(3);
+        const AUTHOR = new tr.Terminal(0);
+        const TITLE = new tr.Terminal(0);
+        const ISBN = new tr.Terminal(0);
+        const root =
+            t(BOOKS, undefined,
+                t(BOOK, undefined,
+                    t(AUTHOR, undefined),
+                    t(TITLE, undefined),
+                    t(ISBN, undefined)),
+                t(BOOK, undefined,
+                    t(AUTHOR, undefined),
+                    t(TITLE, undefined),
+                    t(ISBN, undefined)),
+                t(BOOK, undefined,
+                    t(AUTHOR, undefined),
+                    t(TITLE, undefined),
+                    t(ISBN, undefined)),
+                t(BOOK, undefined,
+                    t(AUTHOR, undefined),
+                    t(TITLE, undefined),
+                    t(ISBN, undefined)),
+                t(BOOK, undefined,
+                    t(AUTHOR, undefined),
+                    t(TITLE, undefined),
+                    t(ISBN, undefined)));
+
+        let grammar = new tr.Grammar(root);
+
+        let labels = new Map([[BOOKS, 'BOOKS'], [BOOK, 'BOOK'], [AUTHOR, 'AUTHOR'], [TITLE, 'TITLE'], [ISBN, 'ISBN']]);
+
+        if (debug) {
+            tr.debug_print(labels, grammar.tree);
+        }
+        let new_sym;
+        let num_params = 0;
+        do {
+            tr.check_tree(grammar.tree);
+            tr.check_digrams(labels, grammar);
+            for (let rule of grammar.rules.values()) {
+                tr.check_tree(rule);
+            }
+
+            new_sym = grammar.replaceBestDigram();
+            if (debug) {
+                console.log('-'.repeat(20));
+                tr.debug_print(labels, grammar.tree);
+                console.log('grammar:');
+                for (let [symbol, rule] of grammar.rules.entries()) {
+                    symbol.formals.forEach(s => labels.set(s, `p${num_params++}`));
+                    console.log(labels.get(symbol), symbol.formals.map(s => labels.get(s)), '::=');
+                    tr.debug_print(labels, rule);
+                }
+            }
+        } while (new_sym);
+
+        grammar.optimize();
+        console.log('optimized grammar');
+        tr.debug_print(labels, grammar.tree);
+        // TODO: grammar printer
+        for (let [symbol, rule] of grammar.rules.entries()) {
+            symbol.formals.forEach(s => labels.set(s, `p${num_params++}`));
+            console.log(labels.get(symbol), symbol.formals.map(s => labels.get(s)), '::=');
+            tr.debug_print(labels, rule);
+        }
     });
 });
 
@@ -384,6 +457,7 @@ describe('prune_rule', () => {
             console.log('after replacing best digram');
             tr.debug_print(debug_labels, grammar.tree);
         }
+        grammar.compute_stats();
         grammar.prune(symbol);
         if (debug) {
             console.log('after pruning that symbol');
