@@ -367,14 +367,19 @@ export class DigramList {
     }
 
     append(node: Node) {
+        assert(node);
         if (!this.first) {
             assert(!this.last);
             assert(this.occ.size === 0);
             this.first = this.last = node;
+            assert(this.first && this.last);
         } else {
+            assert(this.last, 'when first is set, last must be set');
             let old_last = this.last;
             old_last.nextDigram[this.digram.index] = node;
             node.prevDigram[this.digram.index] = old_last;
+            // TODO(dpc): Is this assertion valid?
+            assert(!node.nextDigram[this.digram.index]);
             this.last = node;
         }
         this.occ.add(node);
@@ -454,6 +459,7 @@ export class Digrams {
         if (list.last === parent) {
             list.last = parent.prevDigram[i];
         }
+        assert(list.first ? list.last : !list.last, 'if first is set, last must be set');
 
         if (parent.prevDigram[i]) {
             parent.prevDigram[i].nextDigram[i] = parent.nextDigram[i];
@@ -461,6 +467,8 @@ export class Digrams {
         if (parent.nextDigram[i]) {
             parent.nextDigram[i].prevDigram[i] = parent.prevDigram[i];
         }
+        parent.prevDigram[i] = null;
+        parent.nextDigram[i] = null;
     }
 
     addNode(node: Node) {
@@ -510,6 +518,29 @@ export class Grammar {
         this.tree = root;
         this.rules = new Map;
         this.digrams = new Digrams(root, options);
+    }
+
+    // Builds the grammar using TreeRePair. Enumerate 'rules' and walk
+    // 'tree' to output the grammar.
+    build(): Grammar {
+        while (this.replaceBestDigram()) {
+        }
+        this.optimize();
+        return this;
+    }
+
+    debug_print(labels: Map<Symbol, string>): void {
+        debug_print(labels, this.tree);
+        console.log('grammar:');
+        for (let [symbol, rule] of this.rules.entries()) {
+            symbol.formals.forEach(s => {
+                if (!labels.has(s)) {
+                    labels.set(s, `p${labels.size}`);
+                }
+            });
+            console.log(labels.get(symbol), symbol.formals.map(s => labels.get(s)), '::=');
+            debug_print(labels, rule);
+        }
     }
 
     // Rewrites the grammar to replace the most frequent digram.
@@ -654,8 +685,8 @@ export class Grammar {
                 debug_labels.set(param, `@${i}`);
             }
             debug_print(debug_labels, this.rules.get(new_symbol));
-            console.log('whole tree before rewriting:');
-            debug_print(debug_labels, this.tree);
+            //console.log('whole tree before rewriting:');
+            //debug_print(debug_labels, this.tree);
         }
 
         // Rewrite the tree.
@@ -669,9 +700,9 @@ export class Grammar {
 
             if (debug) {
                 console.log('did one substitution:');
-                debug_print(debug_labels, invocation);
-                console.log('whole tree is now:');
-                debug_print(debug_labels, this.tree);
+                debug_print(debug_labels, invocation.parent ? invocation.parent : invocation);
+                //console.log('whole tree is now:');
+                //debug_print(debug_labels, this.tree);
             }
         }
 

@@ -102,7 +102,7 @@ export class Grammar {
 
             let expected = this.rules.get(kind);
             if (expected && !shallowEquals(props, expected)) {
-                throw Error(`encountered differing shapes of of ${kind}: ${expected} verus ${props}`);
+                throw Error(`encountered differing shapes of ${kind}: ${expected} verus ${props}`);
             } else {
                 this.rules.set(kind, props);
             }

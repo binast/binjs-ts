@@ -408,13 +408,7 @@ describe('Grammar', () => {
             new_sym = grammar.replaceBestDigram();
             if (debug) {
                 console.log('-'.repeat(20));
-                tr.debug_print(labels, grammar.tree);
-                console.log('grammar:');
-                for (let [symbol, rule] of grammar.rules.entries()) {
-                    symbol.formals.forEach(s => labels.set(s, `p${num_params++}`));
-                    console.log(labels.get(symbol), symbol.formals.map(s => labels.get(s)), '::=');
-                    tr.debug_print(labels, rule);
-                }
+                grammar.debug_print(labels);
             }
         } while (new_sym);
 

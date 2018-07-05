@@ -3,6 +3,7 @@ import { Writable } from 'stream';
 import { TextDecoder, TextEncoder } from 'util';
 
 import * as S from './schema';
+import * as tr from './treerepair';
 import { Grammar } from './grammar';
 import { MruDeltaWriter } from './delta';
 import { StringStripper } from './string_strip';
@@ -213,6 +214,103 @@ export enum BuiltInGrammar {
     CONS = '*cons*',
 }
 
+class TreeRePairApplicator {
+    // This is the JavaScript grammar, not the AST
+    // meta-grammar.
+    grammar: Grammar;
+    t_true: tr.Terminal;
+    t_false: tr.Terminal;
+    t_string: tr.Terminal;
+    t_null: tr.Terminal;
+    t_undefined: tr.Terminal;
+    t_number: tr.Terminal;
+
+    // This is used for encoding arrays.
+    t_cons: tr.Terminal;
+    t_nil: tr.Terminal;
+
+    t_kind: Map<string, tr.Terminal>;
+
+    constructor(g: Grammar) {
+        this.grammar = g;
+        this.t_true = new tr.Terminal(0);
+        this.t_false = new tr.Terminal(0);
+        this.t_string = new tr.Terminal(0);
+        this.t_null = new tr.Terminal(0);
+        this.t_undefined = new tr.Terminal(0);
+        this.t_number = new tr.Terminal(0);
+
+        this.t_cons = new tr.Terminal(2);
+        this.t_nil = new tr.Terminal(0);
+
+        this.t_kind = new Map();
+        for (let [rule, props] of g.rules) {
+            this.t_kind.set(rule, new tr.Terminal(props.length));
+        }
+    }
+
+    apply(script: S.Script): void {
+        let tree = this.build(script);
+        // TODO(dpc): Experiment with maximal rank.
+        let labels = new Map([
+            [this.t_true, 'true'],
+            [this.t_false, 'false'],
+            [this.t_string, '<string>'],
+            [this.t_null, 'null'],
+            [this.t_undefined, 'undefined'],
+            [this.t_number, '<number>'],
+            [this.t_cons, 'Array'],
+            [this.t_nil, 'EndOfArray']
+        ]);
+        for (let [ctor, terminal] of this.t_kind) {
+            labels.set(terminal, ctor);
+        }
+        //tr.debug_print(labels, tree);
+        let tr_grammar = new tr.Grammar(tree);
+        tr_grammar.build();
+        // TODO(dpc): Do something!
+        tr_grammar.debug_print(labels);
+    }
+
+    // Given a JavaScript AST node, translates in into TreeRePair
+    // nodes.
+    private build(node: any): tr.Node {
+        if (node === true) {
+            return new tr.Node(this.t_true);
+        } else if (node === false) {
+            return new tr.Node(this.t_false);
+        } else if (node === null) {
+            return new tr.Node(this.t_null);
+        } else if (node === undefined) {
+            return new tr.Node(this.t_undefined);
+        } else if (typeof node === 'string' || node instanceof StringStripper) {
+            return new tr.Node(this.t_string);
+        } else if (typeof node === 'number') {
+            return new tr.Node(this.t_number);
+        } else if (node instanceof Array) {
+            let result = new tr.Node(this.t_nil);
+            for (let i = node.length - 1; i >= 0; i--) {
+                let tr_node = new tr.Node(this.t_cons);
+                tr_node.appendChild(this.build(node[i]));
+                tr_node.appendChild(result);
+                result = tr_node;
+            }
+            return result;
+        } else {
+            let kind = node.constructor.name;
+            let kind_symbol = this.t_kind.get(kind);
+            if (!kind_symbol) {
+                throw new Error(`missing symbol for "${kind}"`);
+            }
+            let tr_node = new tr.Node(kind_symbol);
+            for (let property of this.grammar.rules.get(kind)) {
+                tr_node.appendChild(this.build(node[property]));
+            }
+            return tr_node;
+        }
+    }
+}
+
 export class Encoder {
     readonly script: S.Script;
     readonly stringTable: StringTable;
@@ -323,6 +421,9 @@ export class Encoder {
     }
 
     encodeAbstractSyntax(syntaxStream: WriteStream): void {
+        let applicator = new TreeRePairApplicator(this.grammar);
+        applicator.apply(this.script);
+
         // Shred the tree into a table of parent node kind, n-th
         // child children.
         let table = new Map<string, any[]>();
