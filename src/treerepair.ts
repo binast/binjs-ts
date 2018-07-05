@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 // TODO(dpc): This heap does O(n) searches for times to update, so
 // updates become O(n). Ditch this and keep a heap index in the item.
-import * as Heap from 'heap';
+import { Heap, Heapable } from './heap';
 
 // A symbol is something which can appear in a tree.
 export abstract class Symbol {
@@ -355,15 +355,20 @@ export class DigramTable {
     }
 }
 
-export class DigramList {
+export class DigramList implements Heapable {
     digram: Digram;
     first: Node;
     last: Node;
     occ: Set<Node>;
+    heap_index: number;
 
     constructor(digram: Digram) {
         this.digram = digram;
         this.occ = new Set;
+    }
+
+    get heap_value(): number {
+        return this.occ.size;
     }
 
     append(node: Node) {
@@ -390,13 +395,13 @@ export class Digrams {
     readonly table: DigramTable;
     readonly digrams: Map<Digram, DigramList>;
     readonly max?: number;
-    readonly frequency: Heap<Digram>;
+    readonly frequency: Heap<DigramList>;
 
     constructor(root: Node, options?: { maxRank: number }) {
         this.table = new DigramTable;
         this.digrams = new Map;
         this.max = options ? options.maxRank : null;
-        this.frequency = new Heap((a: DigramList, b: DigramList): number => b.occ.size - a.occ.size);
+        this.frequency = new Heap();
 
         // See TreeRePair paper Fig. 8.
         for (let parent of post_order(root)) {
@@ -421,7 +426,7 @@ export class Digrams {
         if (!list) {
             list = new DigramList(d);
             this.digrams.set(d, list);
-            this.frequency.push(list);
+            this.frequency.add(list);
         }
         return list;
     }
@@ -443,7 +448,7 @@ export class Digrams {
         let list = this.digram_list(digram);
         if (!list.occ.has(child)) {
             list.append(parent);
-            this.frequency.updateItem(list);
+            this.frequency.increased(list);
         }
     }
 
@@ -452,7 +457,7 @@ export class Digrams {
 
         let list = this.digram_list(d);
         list.occ.delete(parent);
-        this.frequency.updateItem(list);
+        this.frequency.decreased(list);
         if (list.first === parent) {
             list.first = parent.nextDigram[i];
         }
