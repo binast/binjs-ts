@@ -337,6 +337,24 @@ describe('Grammar', () => {
             }
         } while (new_sym);
     });
+
+    it('should produce non-terminals in "reverse hierarchical order"', () => {
+        const A = new tr.Terminal(1);
+        const B = new tr.Terminal(1);
+        const C = new tr.Terminal(0);
+        const P = new tr.Nonterminal(1);
+        const Q = new tr.Nonterminal(0);
+        const root =
+            t(A, undefined,
+                t(P, undefined,
+                    t(Q, undefined)));
+        let grammar = new tr.Grammar(root);
+        grammar.rules.set(P, t(B, undefined, t(P.formals[0])));
+        grammar.rules.set(Q, t(C));
+        let order = grammar.compute_stats();
+        // P before Q because P references Q.
+        expect(order).to.deep.equal([P, Q]);
+    });
 });
 
 describe('prune_rule', () => {

@@ -1,4 +1,6 @@
 import * as assert from 'assert';
+// TODO(dpc): This heap does O(n) searches for times to update, so
+// updates become O(n). Ditch this and keep a heap index in the item.
 import * as Heap from 'heap';
 
 // A symbol is something which can appear in a tree.
@@ -499,8 +501,6 @@ export class Grammar {
     tree: Node;
     digrams: Digrams;
     stats: Map<Nonterminal, RuleStats>;
-    // Maps non-terminals to the set of productions they reference.
-    graph: Map<Nonterminal, Set<Nonterminal>>;
 
     constructor(root: Node, options?: { maxRank: number }) {
         this.tree = root;
@@ -678,30 +678,27 @@ export class Grammar {
     // - Number of references to a nonterminal.
     // - "Savings" of each rule.
     // - Hierarchical order.
-    compute_stats(): void {
-        // key => value means non-terminal 'key' appears in grammar rule 'value'
+    compute_stats(): Nonterminal[] {
+        // key => value means non-terminal 'key' references grammar rule 'value'
         let graph = new Map<Nonterminal, Set<Nonterminal>>();
+        // key => value means non-terminal 'key' is referenced by rule 'value'
+        let inv_graph = new Map<Nonterminal, Set<Nonterminal>>();
         let add_edge = (from: Nonterminal, to: Nonterminal): void => {
-            if (!to) {
+            if (!from) {
                 // This is an edge to the start rule; we always
                 // process the start rule and do not need to record
                 // it.
                 return;
             }
-            let users = graph.get(from);
-            if (!users) {
-                users = new Set<Nonterminal>();
-                graph.set(from, users);
-            }
-            users.add(to);
+            graph.get(from).add(to);
+            graph.get(to).add(from);
         };
-
-        this.graph = new Map<Nonterminal, Set<Nonterminal>>();
 
         this.stats = new Map<Nonterminal, RuleStats>();
         this.stats.set(null, new RuleStats(null));
         for (let symbol of this.rules.keys()) {
-            this.graph.set(symbol, new Set());
+            graph.set(symbol, new Set());
+            inv_graph.set(symbol, new Set());
             this.stats.set(symbol, new RuleStats(symbol));
         }
 
@@ -709,7 +706,7 @@ export class Grammar {
             stats.size++;
             if (body.label instanceof Nonterminal) {
                 this.stats.get(body.label).ref_count++;
-                add_edge(body.label, stats.symbol);
+                add_edge(stats.symbol, body.label);
             }
             for (let child = body.firstChild; child; child = child.nextSibling) {
                 visit(stats, child);
@@ -720,14 +717,30 @@ export class Grammar {
             visit(this.stats.get(symbol), body);
         }
 
-        // Now invert the graph
-        for (let [from, tos] of graph) {
-            for (let to of tos) {
-                this.graph.get(to).add(from);
+        // Compute the transitive closure of the graph.
+        let work = Array.from(graph.keys());
+        while (work.length) {
+            const t = work.pop();
+            const reachable = graph.get(t);
+            let changed = false;
+            for (let step of reachable) {
+                assert(step !== t, 'grammar is not linear');
+                for (let next_step of graph.get(step)) {
+                    if (!reachable.has(next_step)) {
+                        reachable.add(next_step);
+                        changed = true;
+                    }
+                }
+            }
+            if (changed) {
+                for (let predecessor of inv_graph.get(t)) {
+                    work.push(predecessor);
+                }
             }
         }
-
-        // TODO(dpc): Add a heap.
+        // We get "reverse hierarchical order" by sorting the size of
+        // the transitive closure of the graph.
+        return Array.from(graph.entries()).sort((a, b) => b[1].size - a[1].size).map(a => a[0]);
     }
 
     // Erases a rule from the grammar by applying it. Note, after
