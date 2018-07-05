@@ -94,8 +94,8 @@ export class Heap<T extends Heapable> {
     // Heapifies a subheap. Sub-sub heaps are assumed to be valid heaps.
     private decreased_at(i: number): void {
         while (true) {
-            const left = i << 1 + 1;
-            const right = i << 1 + 2
+            const left = (i << 1) + 1;
+            const right = (i << 1) + 2
             let largest = i;
             if (left < this.v.length && this.v[left].heap_value > this.v[largest].heap_value) {
                 largest = left;
