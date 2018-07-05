@@ -767,17 +767,14 @@ export class Grammar {
         while (work.length) {
             const t = work.pop();
             const reachable = closure.get(t);
-            let changed = false;
+            const old_size = reachable.size;
             for (let step of reachable) {
                 assert(step !== t, 'grammar is not linear');
                 for (let next_step of closure.get(step)) {
-                    if (!reachable.has(next_step)) {
-                        reachable.add(next_step);
-                        changed = true;
-                    }
+                    reachable.add(next_step);
                 }
             }
-            if (changed) {
+            if (reachable.size !== old_size) {
                 for (let predecessor of inv_graph.get(t).keys()) {
                     work.push(predecessor);
                 }
