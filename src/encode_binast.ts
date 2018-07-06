@@ -136,7 +136,7 @@ export class EncodingWriter {
     }
 
     writeVarUint(uval: number): number {
-        assert(Number.isInteger(uval));
+        assert(Number.isInteger(uval), `not an integer: ${uval}`);
         assert(0 <= uval);
         let n = 0;
         do {
@@ -233,12 +233,13 @@ class TreeRePairApplicator {
 
         this.t_kind = new Map();
         for (let [rule, props] of g.rules) {
-            this.t_kind.set(rule, new tr.Terminal(props.length));
+            let t = new tr.Terminal(props.length);
+            this.t_kind.set(rule, t);
         }
     }
 
     apply(script: S.Script): void {
-        const debug = true;
+        const debug = false;
         let tree = this.build(script);
         let labels;
         if (debug) {
@@ -254,11 +255,11 @@ class TreeRePairApplicator {
             for (let [ctor, terminal] of this.t_kind) {
                 labels.set(terminal, ctor);
             }
-            //tr.debug_print(labels, tree);
         }
         this.tr_grammar = new tr.Grammar(tree);
         this.tr_grammar.build();
         if (debug) {
+            tr.check_grammar(this.tr_grammar);
             tr.check_tree(this.tr_grammar.tree);
             this.tr_grammar.debug_print(labels);
 
@@ -282,7 +283,6 @@ class TreeRePairApplicator {
                         labels.set(sym, 'non-terminal');
                     }
                 }
-                // TODO(dpc): How do nonterminals with 1 counts occur?
                 console.log(labels.get(sym), count);
             }
         }
@@ -451,28 +451,90 @@ export class Encoder {
         applicator.apply(this.script);
 
         let symbol_code_map = new Map<tr.Symbol, number>();
-        let add_symbol = symbol => {
+        let add_symbol = (symbol: tr.Symbol): void => {
+            assert(!symbol_code_map.has(symbol));
             symbol_code_map.set(symbol, symbol_code_map.size);
         };
 
         // Write: number of parameters.
-        const num_parameters = applicator.tr_grammar.maxRank;
+        let parameters = new Set<tr.Parameter>();
+        for (let symbol of applicator.tr_grammar.rules.keys()) {
+            symbol.formals.forEach((p) => parameters.add(p));
+        }
+        const num_parameters = parameters.size;
         this.w.writeVarUint(num_parameters);
-        for (let i = 0; i < num_parameters; i++) {
-            add_symbol(tr.Parameter.get(i));
+        for (let parameter of parameters) {
+            add_symbol(parameter);
         }
 
         // Write: number of built-in symbols
         this.w.writeVarUint(7);
         // Symbols are enumerated in this order per format.
-        add_symbol(applicator.t_false);
-        add_symbol(applicator.t_string);
         add_symbol(applicator.t_nil);
+        add_symbol(applicator.t_string);
         add_symbol(applicator.t_null);
         add_symbol(applicator.t_cons);
-        add_symbol(applicator.t_undefined);
+        add_symbol(applicator.t_false);
         add_symbol(applicator.t_true);
+        add_symbol(applicator.t_undefined);
+
         // Write: number of meta-rules.
         this.w.writeVarUint(applicator.tr_grammar.rules.size);
+        // Meta-rules are grouped by rank and enumerated that way:
+        // <n = number of ranks - 1>
+        // <number of rank 0 rules>
+        // n * <delta from last rank - 1><number of rules with this rank>
+        const meta_by_size = new Map<number, Set<tr.Nonterminal>>([[0, new Set()]]);
+        for (let symbol of applicator.tr_grammar.rules.keys()) {
+            let symbols = meta_by_size.get(symbol.rank);
+            if (!symbols) {
+                symbols = new Set<tr.Nonterminal>();
+                meta_by_size.set(symbol.rank, symbols);
+            }
+            symbols.add(symbol);
+        }
+        this.w.writeVarUint(meta_by_size.size - 1);
+        let last_rank = 0;
+        let symbols_by_size = Array.from(meta_by_size).sort((a, b) => a[0] - b[0]);
+        for (let [rank, count] of symbols_by_size) {
+            if (rank != 0) {
+                const delta = rank - last_rank - 1;
+                this.w.writeVarUint(delta);
+                last_rank = rank;
+            }
+            this.w.writeVarUint(count.size);
+
+            // Assign the labels.
+            count.forEach(add_symbol);
+        }
+
+        // Assign the grammar rules.
+        for (let rule of applicator.t_kind.values()) {
+            add_symbol(rule);
+        }
+
+        // Write: number of numeric constants; then values.
+        this.w.writeVarUint(applicator.t_numbers.size);
+        for (let [value, symbol] of Array.from(applicator.t_numbers).sort((a, b) => b[1].count - a[1].count)) {
+            this.w.writeFloat(value);
+            add_symbol(symbol.terminal);
+        }
+
+        let write_tree = (tree: tr.Node) => {
+            for (let node of tr.pre_order(tree)) {
+                let code = symbol_code_map.get(node.label);
+                this.w.writeVarUint(code);
+            }
+        };
+
+        // Write the rules.
+        for (let [_, symbols] of symbols_by_size) {
+            for (let symbol of symbols) {
+                write_tree(applicator.tr_grammar.rules.get(symbol));
+            }
+        }
+
+        // Write the tree.
+        write_tree(applicator.tr_grammar.tree);
     }
 }

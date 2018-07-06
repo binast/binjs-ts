@@ -199,6 +199,24 @@ export function* pre_order(node: Node): IterableIterator<Node> {
     }
 }
 
+export function check_grammar(g: Grammar) {
+    for (let [symbol, body] of g.rules) {
+        check_rule(symbol, body);
+    }
+    check_rule(null, g.tree);
+}
+
+export function check_rule(symbol: Nonterminal, root: Node) {
+    for (let node of pre_order(root)) {
+        if (node.label instanceof Parameter && symbol.formals.indexOf(node.label) === -1) {
+            console.log('bad parameter not in formals');
+            let labels = new Map([[node.label, '<<bad param>>']]);
+            debug_print(labels, root);
+            assert(false);
+        }
+    }
+}
+
 // Checks that `node` is a valid tree.
 export function check_tree(root: Node) {
     const tortoise = pre_order(root);
@@ -547,19 +565,6 @@ export class Grammar {
         this.optimize();
         check_tree(this.tree);
         return this;
-    }
-
-    // Gets the largest rank in practice, which may be smaller than
-    // the specified maximal rank. This is the number of "parameters",
-    // or child nodes, that a production has.
-    get maxRank(): number {
-        let max = 0;
-        for (let nonterminal of this.rules.keys()) {
-            if (nonterminal.rank > max) {
-                max = nonterminal.rank;
-            }
-        }
-        return max;
     }
 
     debug_print(labels: Map<Symbol, string>): void {
