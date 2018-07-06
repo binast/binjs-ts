@@ -1,9 +1,8 @@
 import * as assert from 'assert';
-// TODO(dpc): This heap does O(n) searches for times to update, so
-// updates become O(n). Ditch this and keep a heap index in the item.
 import { Heap, Heapable } from './heap';
 
 // A symbol is something which can appear in a tree.
+// TODO(dpc): Rename this because it overlaps with built-in Symbol.
 export abstract class Symbol {
     readonly rank: number;
 
@@ -224,7 +223,7 @@ export function check_tree(root: Node) {
     for (let node of pre_order(root)) {
         if (node.firstChild) {
             if (node.firstChild.prevSiblingOrLastChild.parent !== node) {
-                throw Error(`"first" child ${node.firstChild.debug_tag} has previous sibling/last child pointer to ${node.firstChild.prevSiblingOrLastChild.debug_tag} with different parent`);
+                throw Error(`"first" child ${node.firstChild.debug_tag} has previous sibling/last child pointer to ${node.firstChild.prevSiblingOrLastChild.debug_tag} with different parent (${node.firstChild.prevSiblingOrLastChild.parent}) node ${node.firstChild === node.lastChild ? 'is' : 'is not'} last child`);
             }
             let i = -1, child;
             for ([i, child] of node.child_entries()) {
@@ -544,14 +543,29 @@ export class Grammar {
     build(): Grammar {
         while (this.replaceBestDigram()) {
         }
+        check_tree(this.tree);
         this.optimize();
+        check_tree(this.tree);
         return this;
+    }
+
+    // Gets the largest rank in practice, which may be smaller than
+    // the specified maximal rank. This is the number of "parameters",
+    // or child nodes, that a production has.
+    get maxRank(): number {
+        let max = 0;
+        for (let nonterminal of this.rules.keys()) {
+            if (nonterminal.rank > max) {
+                max = nonterminal.rank;
+            }
+        }
+        return max;
     }
 
     debug_print(labels: Map<Symbol, string>): void {
         debug_print(labels, this.tree);
         console.log('grammar:');
-        for (let [symbol, rule] of this.rules.entries()) {
+        for (let [symbol, rule] of this.rules) {
             symbol.formals.forEach(s => {
                 if (!labels.has(s)) {
                     labels.set(s, `p${labels.size}`);
@@ -742,7 +756,7 @@ export class Grammar {
 
         let increment = (g: UseCount, t: Nonterminal, u: Nonterminal): void => {
             let counts = g.get(t);
-            counts.set(u, counts.get(u) || 0);
+            counts.set(u, 1 + (counts.get(u) || 0));
         };
         let add_edge = (from: Nonterminal, to: Nonterminal): void => {
             this.stats.get(to).ref_count++;
@@ -854,12 +868,12 @@ export class Grammar {
             // ...now uses the things symbol used.
             for (let [t, count_t_in_symbol] of this.uses.get(symbol)) {
                 let delta = count_t_in_symbol * count_symbol_in_s;
-                s_uses.set(t, delta + s_uses.get(t) || 0);
+                s_uses.set(t, delta + (s_uses.get(t) || 0));
                 this.stats.get(t).ref_count += delta;
 
                 // TODO: One of these could be a set because the information should be reflexive
                 let t_used_by = this.used_by.get(t);
-                t_used_by.set(s, delta + t_used_by.get(s) || 0);
+                t_used_by.set(s, delta + (t_used_by.get(s) || 0));
             }
             // ...no longer uses 'symbol'.
             s_uses.delete(symbol);
@@ -901,7 +915,9 @@ function apply_rule_at(node: Node, symbol: Nonterminal, replacement: Node): Node
     for (let param of symbol.formals) {
         replacements.set(param, args[replacements.size][1]);
     }
-    return clone_tree(replacement, replacements);
+    const clone = clone_tree(replacement, replacements);
+    assert(replacements.size === 0);
+    return clone;
 }
 
 // Produces a clone of `tree`; if a node labeled with a key of
@@ -932,6 +948,7 @@ function map_children(tree: Node, f: ((Node) => Node)): void {
     let prev = null;
     for (let [i, child] of tree.child_entries()) {
         let new_child = f(child);
+        new_child.parent = tree;
         if (i == 0) {
             tree.firstChild = new_child;
         } else {

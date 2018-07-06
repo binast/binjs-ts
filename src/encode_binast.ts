@@ -9,6 +9,7 @@ import { MruDeltaWriter } from './delta';
 import { StringStripper } from './string_strip';
 import { rewriteAst } from './ast_util';
 
+// TODO(dpc): Rename this because it overlaps with fs.WriteStream.
 export interface WriteStream {
     writeByte(b: number): number;
     writeArray(bs: Array<number>): number;
@@ -41,7 +42,7 @@ export class FixedSizeBufStream implements WriteStream {
         return this.priorSize + this.curOffset;
     }
 
-    writeByte(b: number) {
+    writeByte(b: number): number {
         // assert(this.curOffset < this.cur.length)
         // assert(Number.isInteger(b));
         // assert((0 <= b) && (b < 256));
@@ -55,14 +56,14 @@ export class FixedSizeBufStream implements WriteStream {
         return 1;
     }
 
-    writeArray(bs: Array<number>) {
+    writeArray(bs: Array<number>): number {
         for (const b of bs) {
             this.writeByte(b);
         }
         return bs.length;
     }
 
-    writeUint8Array(bs: Uint8Array) {
+    writeUint8Array(bs: Uint8Array): number {
         for (const b of bs) {
             this.writeByte(b);
         }
@@ -193,42 +194,29 @@ export class StringTable {
     }
 }
 
-// TODO(dpc): If doing skippable functions there needs to be a summary of
-// how many "memo" indices to skip in the chunk.
-export enum BuiltInTags {
-    NULL = 0,
-    UNDEFINED = 1,
-    STRING = 2,
-    NUMBER = 3,
-    TRUE = 4,
-    FALSE = 5,
-    CONS = 7,
-    NIL = 8,
-
-    FIRST_GRAMMAR_NODE = 9,
-}
-
-export enum BuiltInGrammar {
-    PROGRAM = '*program*',
-    NUMBER = '*number*',
-    CONS = '*cons*',
-}
-
 class TreeRePairApplicator {
     // This is the JavaScript grammar, not the AST
     // meta-grammar.
     grammar: Grammar;
+
+    // This is the TreeRePair meta-grammar.
+    tr_grammar: tr.Grammar;
+
+    // Primitive symbols.
     t_true: tr.Terminal;
     t_false: tr.Terminal;
     t_string: tr.Terminal;
     t_null: tr.Terminal;
     t_undefined: tr.Terminal;
 
-    // This is used for encoding arrays.
+    // Primitive symbols used for encoding arrays.
     t_cons: tr.Terminal;
     t_nil: tr.Terminal;
 
+    // Grammar production symbols.
     t_kind: Map<string, tr.Terminal>;
+
+    // Numeric literals.
     t_numbers: Map<number, { count: number, terminal: tr.Terminal }>;
 
     constructor(g: Grammar) {
@@ -250,54 +238,57 @@ class TreeRePairApplicator {
     }
 
     apply(script: S.Script): void {
-        const debug = false;
+        const debug = true;
         let tree = this.build(script);
         let labels;
-        if (debug || true) {
+        if (debug) {
             labels = new Map([
                 [this.t_true, 'true'],
                 [this.t_false, 'false'],
                 [this.t_string, '<string>'],
                 [this.t_null, 'null'],
                 [this.t_undefined, 'undefined'],
-                [this.t_cons, 'Array'],
-                [this.t_nil, 'EndOfArray']
+                [this.t_cons, '<cons>'],
+                [this.t_nil, '<nil>']
             ]);
             for (let [ctor, terminal] of this.t_kind) {
                 labels.set(terminal, ctor);
             }
             //tr.debug_print(labels, tree);
         }
-        let tr_grammar = new tr.Grammar(tree);
-        tr_grammar.build();
+        this.tr_grammar = new tr.Grammar(tree);
+        this.tr_grammar.build();
         if (debug) {
-            tr_grammar.debug_print(labels);
-        }
-        for (let [num, t] of this.t_numbers) {
-            labels.set(t.terminal, 'n:' + num);
-        }
-        let freq = new Map();
-        for (let node of tr.pre_order(tr_grammar.tree)) {
-            freq.set(node.label, 1 + (freq.get(node.label) || 0));
-        }
-        for (let [_, body] of tr_grammar.rules) {
-            for (let node of tr.pre_order(body)) {
+            tr.check_tree(this.tr_grammar.tree);
+            this.tr_grammar.debug_print(labels);
+
+            for (let [num, t] of this.t_numbers) {
+                labels.set(t.terminal, 'n:' + num);
+            }
+            let freq = new Map();
+            for (let node of tr.pre_order(this.tr_grammar.tree)) {
                 freq.set(node.label, 1 + (freq.get(node.label) || 0));
             }
-        }
-        for (let [sym, count] of Array.from(freq).sort((a, b) => b[1] - a[1])) {
-            if (!labels.has(sym)) {
-                if (sym instanceof tr.Parameter) {
-                    labels.set(sym, 'parameter');
-                } else if (sym instanceof tr.Nonterminal) {
-                    labels.set(sym, 'non-terminal');
+            for (let body of this.tr_grammar.rules.values()) {
+                for (let node of tr.pre_order(body)) {
+                    freq.set(node.label, 1 + (freq.get(node.label) || 0));
                 }
             }
-            console.log(labels.get(sym), count);
+            for (let [sym, count] of Array.from(freq).sort((a, b) => b[1] - a[1])) {
+                if (!labels.has(sym)) {
+                    if (sym instanceof tr.Parameter) {
+                        labels.set(sym, 'parameter');
+                    } else if (sym instanceof tr.Nonterminal) {
+                        labels.set(sym, 'non-terminal');
+                    }
+                }
+                // TODO(dpc): How do nonterminals with 1 counts occur?
+                console.log(labels.get(sym), count);
+            }
         }
     }
 
-    // Given a JavaScript AST node, translates in into TreeRePair
+    // Given a JavaScript AST node, translates it into TreeRePair
     // nodes.
     private build(node: any): tr.Node {
         if (node === true) {
@@ -405,7 +396,7 @@ export class Encoder {
         this.encodeGrammar();
         this.encodeStringTable();
         this.encodeStringStream();
-        this.encodeAbstractSyntax(this.w);
+        this.encodeAbstractSyntax();
     }
 
     encodeGrammar(): void {
@@ -455,123 +446,33 @@ export class Encoder {
         stringStream.copyToWriteStream(this.writeStream);
     }
 
-    encodeAbstractSyntax(syntaxStream: WriteStream): void {
+    encodeAbstractSyntax(): void {
         let applicator = new TreeRePairApplicator(this.grammar);
         applicator.apply(this.script);
 
         let symbol_code_map = new Map<tr.Symbol, number>();
+        let add_symbol = symbol => {
+            symbol_code_map.set(symbol, symbol_code_map.size);
+        };
 
-        // Shred the tree into a table of parent node kind, n-th
-        // child children.
-        let table = new Map<string, any[]>();
-
-        // Forges a key into `table`.
-        let key = (rule: string, child: number): string => rule + '/' + child;
-
-        // Initialize the tables.
-        for (let [rule, properties] of this.grammar.rules.entries()) {
-            for (let i = 0; i < properties.length; i++) {
-                table.set(key(rule, i), []);
-            }
+        // Write: number of parameters.
+        const num_parameters = applicator.tr_grammar.maxRank;
+        this.w.writeVarUint(num_parameters);
+        for (let i = 0; i < num_parameters; i++) {
+            add_symbol(tr.Parameter.get(i));
         }
 
-        // Add phony entries for these built-in rules.
-        // "list" is like a cons cell, a production with two slots;
-        // number has one slot with the actual literal.
-        // program is the entrypoint with one slot.
-        table.set(key(BuiltInGrammar.CONS, 0), []);
-        table.set(key(BuiltInGrammar.CONS, 1), []);
-        table.set(key(BuiltInGrammar.NUMBER, 0), []);
-        table.set(key(BuiltInGrammar.PROGRAM, 0), []);
-
-        // These nodes have no children.
-        let terminal = (node) => {
-            return node === undefined || node === null ||
-                typeof node === 'boolean' || node instanceof StringStripper;
-        };
-
-        // Writes into the shredded tree.
-        let write = (rule: string, i: number, value: any): void => {
-            let items = table.get(key(rule, i));
-            if (items === undefined) {
-                throw Error(`no children found for ${key(rule, i)}`);
-            }
-            items.push(value);
-        };
-
-        // Visits the tree preorder. You just have to write something
-        // before recursing so that the decoder has a thread to
-        // follow.
-        let visit = (context, i, node) => {
-            if (node === true) {
-                write(context, i, BuiltInTags.TRUE);
-            } else if (node === false) {
-                write(context, i, BuiltInTags.FALSE);
-            } else if (node === null) {
-                write(context, i, BuiltInTags.NULL);
-            } else if (node === undefined) {
-                write(context, i, BuiltInTags.UNDEFINED);
-            } else if (node instanceof StringStripper) {
-                // TODO(dpc): This could be handled uniformly now;
-                // strings would end up in their own table like
-                // numbers.
-                write(context, i, BuiltInTags.STRING);
-            } else if (typeof node === 'number') {
-                write(context, i, BuiltInTags.NUMBER);
-                write(BuiltInGrammar.NUMBER, 0, node);
-            } else if (node instanceof Array && node.length === 0) {
-                write(context, i, BuiltInTags.NIL);
-            } else if (node instanceof Array) {
-                write(context, i, BuiltInTags.CONS);
-                for (let i = 0; i < node.length; i++) {
-                    visit(BuiltInGrammar.CONS, 0, node[i]);
-                    write(BuiltInGrammar.CONS, 1, i == node.length - 1 ? BuiltInTags.NIL : BuiltInTags.CONS);
-                }
-            } else if (typeof node === 'object') {
-                let kind = node.constructor.name;
-                let tag = BuiltInTags.FIRST_GRAMMAR_NODE + this.grammar.index(kind);
-                write(context, i, tag);
-                i = 0;
-                for (let property of this.grammar.rules.get(kind)) {
-                    visit(kind, i++, node[property]);
-                }
-            }
-        };
-
-        let w = new EncodingWriter(syntaxStream);
-        let write_kind = (rule: string, num_children: number): void => {
-            if (num_children === 0) {
-                return;
-            }
-            assert(table.has(key(rule, 0)), `no children for ${key(rule, 0)} grammar says [${this.grammar.rules.get(rule)}]`);
-            // Start with a count of instances; we use the count
-            // implied by the number of first children.
-            w.writeVarUint(table.get(key(rule, 0)).length);
-
-            // Now write out all of the children.
-            for (let i = 0; i < num_children; i++) {
-                for (let value of table.get(key(rule, i))) {
-                    if (rule === BuiltInGrammar.NUMBER) {
-                        w.writeFloat(value);
-                    } else {
-                        // Everything else is a tag.
-                        w.writeVarUint(value);
-                    }
-                }
-            }
-        };
-
-        // Shred the tree.
-        visit(BuiltInGrammar.PROGRAM, 0, this.script);
-
-        // Write the built-in kinds.
-        write_kind(BuiltInGrammar.PROGRAM, 1);
-        write_kind(BuiltInGrammar.NUMBER, 1);
-        write_kind(BuiltInGrammar.CONS, 2);
-
-        // Write the user data.
-        for (let [rule, body] of this.grammar.rules.entries()) {
-            write_kind(rule, body.length);
-        }
+        // Write: number of built-in symbols
+        this.w.writeVarUint(7);
+        // Symbols are enumerated in this order per format.
+        add_symbol(applicator.t_false);
+        add_symbol(applicator.t_string);
+        add_symbol(applicator.t_nil);
+        add_symbol(applicator.t_null);
+        add_symbol(applicator.t_cons);
+        add_symbol(applicator.t_undefined);
+        add_symbol(applicator.t_true);
+        // Write: number of meta-rules.
+        this.w.writeVarUint(applicator.tr_grammar.rules.size);
     }
 }
