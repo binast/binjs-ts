@@ -223,13 +223,13 @@ class TreeRePairApplicator {
     t_string: tr.Terminal;
     t_null: tr.Terminal;
     t_undefined: tr.Terminal;
-    t_number: tr.Terminal;
 
     // This is used for encoding arrays.
     t_cons: tr.Terminal;
     t_nil: tr.Terminal;
 
     t_kind: Map<string, tr.Terminal>;
+    t_numbers: Map<number, { count: number, terminal: tr.Terminal }>;
 
     constructor(g: Grammar) {
         this.grammar = g;
@@ -238,7 +238,7 @@ class TreeRePairApplicator {
         this.t_string = new tr.Terminal(0);
         this.t_null = new tr.Terminal(0);
         this.t_undefined = new tr.Terminal(0);
-        this.t_number = new tr.Terminal(0);
+        this.t_numbers = new Map();
 
         this.t_cons = new tr.Terminal(2);
         this.t_nil = new tr.Terminal(0);
@@ -250,26 +250,51 @@ class TreeRePairApplicator {
     }
 
     apply(script: S.Script): void {
+        const debug = false;
         let tree = this.build(script);
-        // TODO(dpc): Experiment with maximal rank.
-        let labels = new Map([
-            [this.t_true, 'true'],
-            [this.t_false, 'false'],
-            [this.t_string, '<string>'],
-            [this.t_null, 'null'],
-            [this.t_undefined, 'undefined'],
-            [this.t_number, '<number>'],
-            [this.t_cons, 'Array'],
-            [this.t_nil, 'EndOfArray']
-        ]);
-        for (let [ctor, terminal] of this.t_kind) {
-            labels.set(terminal, ctor);
+        let labels;
+        if (debug || true) {
+            labels = new Map([
+                [this.t_true, 'true'],
+                [this.t_false, 'false'],
+                [this.t_string, '<string>'],
+                [this.t_null, 'null'],
+                [this.t_undefined, 'undefined'],
+                [this.t_cons, 'Array'],
+                [this.t_nil, 'EndOfArray']
+            ]);
+            for (let [ctor, terminal] of this.t_kind) {
+                labels.set(terminal, ctor);
+            }
+            //tr.debug_print(labels, tree);
         }
-        //tr.debug_print(labels, tree);
         let tr_grammar = new tr.Grammar(tree);
         tr_grammar.build();
-        // TODO(dpc): Do something!
-        tr_grammar.debug_print(labels);
+        if (debug) {
+            tr_grammar.debug_print(labels);
+        }
+        for (let [num, t] of this.t_numbers) {
+            labels.set(t.terminal, 'n:' + num);
+        }
+        let freq = new Map();
+        for (let node of tr.pre_order(tr_grammar.tree)) {
+            freq.set(node.label, 1 + (freq.get(node.label) || 0));
+        }
+        for (let [_, body] of tr_grammar.rules) {
+            for (let node of tr.pre_order(body)) {
+                freq.set(node.label, 1 + (freq.get(node.label) || 0));
+            }
+        }
+        for (let [sym, count] of Array.from(freq).sort((a, b) => b[1] - a[1])) {
+            if (!labels.has(sym)) {
+                if (sym instanceof tr.Parameter) {
+                    labels.set(sym, 'parameter');
+                } else if (sym instanceof tr.Nonterminal) {
+                    labels.set(sym, 'non-terminal');
+                }
+            }
+            console.log(labels.get(sym), count);
+        }
     }
 
     // Given a JavaScript AST node, translates in into TreeRePair
@@ -286,7 +311,7 @@ class TreeRePairApplicator {
         } else if (typeof node === 'string' || node instanceof StringStripper) {
             return new tr.Node(this.t_string);
         } else if (typeof node === 'number') {
-            return new tr.Node(this.t_number);
+            return new tr.Node(this.num(node));
         } else if (node instanceof Array) {
             let result = new tr.Node(this.t_nil);
             for (let i = node.length - 1; i >= 0; i--) {
@@ -308,6 +333,16 @@ class TreeRePairApplicator {
             }
             return tr_node;
         }
+    }
+
+    private num(n: number): tr.Terminal {
+        let t = this.t_numbers.get(n);
+        if (!t) {
+            t = { count: 0, terminal: new tr.Terminal(0) };
+            this.t_numbers.set(n, t);
+        }
+        t.count++;
+        return t.terminal;
     }
 }
 
@@ -423,6 +458,8 @@ export class Encoder {
     encodeAbstractSyntax(syntaxStream: WriteStream): void {
         let applicator = new TreeRePairApplicator(this.grammar);
         applicator.apply(this.script);
+
+        let symbol_code_map = new Map<tr.Symbol, number>();
 
         // Shred the tree into a table of parent node kind, n-th
         // child children.
