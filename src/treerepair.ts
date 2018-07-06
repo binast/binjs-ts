@@ -37,15 +37,29 @@ export class Nonterminal extends Symbol {
         super(rank);
         this.formals = [];
         for (let i = 0; i < rank; i++) {
-            this.formals.push(new Parameter());
+            this.formals.push(Parameter.get(i));
         }
     }
 }
 
-// A formal parameter of a grammar production.
+// A formal parameter of a grammar production. Parameters are interned
+// and reused. (This is OK for TreeRePair which does not introduce
+// scopes; other rewritings must take care not to introduce
+// conflicts.)
 export class Parameter extends Symbol {
     constructor() {
         super(0);
+    }
+
+    static table: Map<number, Parameter> = new Map();
+
+    static get(i: number): Parameter {
+        let p = Parameter.table.get(i);
+        if (!p) {
+            p = new Parameter();
+            Parameter.table.set(i, p);
+        }
+        return p;
     }
 }
 
