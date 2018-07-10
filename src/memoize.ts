@@ -1,5 +1,3 @@
-import { StringStripper } from './string_strip';
-
 // Shallow hash function for AST nodes.
 function hash(x: any): number {
     return hash_shallow(x, true);
@@ -25,10 +23,6 @@ function hash_shallow(x: any, step: boolean): any {
             result += x.charCodeAt(i);
         }
         return result;
-    }
-    if (x instanceof StringStripper) {
-        // This is a marker node in the AST.
-        return 7;
     }
     let result = hash_shallow(x.constructor.name, false);
     if (step) {
@@ -76,8 +70,7 @@ export class Memoizer {
             typeof node === 'boolean' ||
             typeof node === 'string' ||
             node === null ||
-            node === undefined ||
-            node instanceof StringStripper) {
+            node === undefined) {
             return node;
         }
         for (let property of Object.keys(node)) {

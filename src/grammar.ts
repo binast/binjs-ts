@@ -1,7 +1,5 @@
 import * as assert from 'assert';
 
-import { StringStripper } from './string_strip';
-
 // Compares whether two primitives, objects or arrays are the same or
 // have the same properties. Property values are compared with `===`.
 function shallowEquals(xs, ys) {
@@ -78,8 +76,7 @@ export class Grammar {
             typeof node === 'number' ||
             typeof node === 'boolean' ||
             typeof node === 'undefined' ||
-            typeof node === 'string' ||
-            node instanceof StringStripper) {
+            typeof node === 'string') {
             // A primitive; do nothing.
         } else if (node instanceof Array) {
             // This is not very JavaScript-y because it doesn't handle

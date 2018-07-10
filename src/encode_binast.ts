@@ -6,7 +6,6 @@ import * as S from './schema';
 import * as tr from './treerepair';
 import { Grammar } from './grammar';
 import { MruDeltaWriter } from './delta';
-import { StringStripper } from './string_strip';
 import { rewriteAst } from './ast_util';
 
 // TODO(dpc): Rename this because it overlaps with fs.WriteStream.
@@ -205,7 +204,6 @@ class TreeRePairApplicator {
     // Primitive symbols.
     t_true: tr.Terminal;
     t_false: tr.Terminal;
-    t_string: tr.Terminal;
     t_null: tr.Terminal;
     t_undefined: tr.Terminal;
 
@@ -216,17 +214,18 @@ class TreeRePairApplicator {
     // Grammar production symbols.
     t_kind: Map<string, tr.Terminal>;
 
-    // Numeric literals.
+    // Literals.
     t_numbers: Map<number, { count: number, terminal: tr.Terminal }>;
+    t_strings: Map<string, { count: number, terminal: tr.Terminal }>;
 
     constructor(g: Grammar) {
         this.grammar = g;
         this.t_true = new tr.Terminal(0);
         this.t_false = new tr.Terminal(0);
-        this.t_string = new tr.Terminal(0);
         this.t_null = new tr.Terminal(0);
         this.t_undefined = new tr.Terminal(0);
         this.t_numbers = new Map();
+        this.t_strings = new Map();
 
         this.t_cons = new tr.Terminal(2);
         this.t_nil = new tr.Terminal(0);
@@ -246,7 +245,6 @@ class TreeRePairApplicator {
             labels = new Map([
                 [this.t_true, 'true'],
                 [this.t_false, 'false'],
-                [this.t_string, '<string>'],
                 [this.t_null, 'null'],
                 [this.t_undefined, 'undefined'],
                 [this.t_cons, '<cons>'],
@@ -299,8 +297,8 @@ class TreeRePairApplicator {
             return new tr.Node(this.t_null);
         } else if (node === undefined) {
             return new tr.Node(this.t_undefined);
-        } else if (typeof node === 'string' || node instanceof StringStripper) {
-            return new tr.Node(this.t_string);
+        } else if (typeof node === 'string') {
+            return new tr.Node(this.str(node));
         } else if (typeof node === 'number') {
             return new tr.Node(this.num(node));
         } else if (node instanceof Array) {
@@ -326,6 +324,16 @@ class TreeRePairApplicator {
         }
     }
 
+    private str(s: string): tr.Terminal {
+        let t = this.t_strings.get(s);
+        if (!t) {
+            t = { count: 0, terminal: new tr.Terminal(0) };
+            this.t_strings.set(s, t);
+        }
+        t.count++;
+        return t.terminal;
+    }
+
     private num(n: number): tr.Terminal {
         let t = this.t_numbers.get(n);
         if (!t) {
@@ -339,63 +347,22 @@ class TreeRePairApplicator {
 
 export class Encoder {
     readonly script: S.Script;
-    readonly stringTable: StringTable;
     readonly writeStream: WriteStream;
     readonly w: EncodingWriter;
-    readonly stripper: StringStripper;
     grammar: Grammar;
 
     constructor(params: {
         script: S.Script,
         writeStream: WriteStream
     }) {
-        let script = params.script;
-
-        this.stripper = new StringStripper();
-        script = this.stripper.visit(script);
-
-        this.stringTable = this.makeStringTable(this.stripper.strings);
-
-        this.script = script;
-
+        this.script = params.script;
         this.writeStream = params.writeStream;
         this.w = new EncodingWriter(this.writeStream);
         this.grammar = null;
     }
 
-    private makeStringTable(strings: string[]): StringTable {
-        // Build a table of string -> occurrence count.
-        let stringFrequency = new Map<string, number>();
-        for (let s of strings) {
-            stringFrequency.set(s, 1 + (stringFrequency.get(s) || 0));
-        }
-
-        let lexicographicSort = (a: string, b: string) => a < b ? -1 : a == b ? 0 : 1;
-
-        // Get the most frequent strings.
-        let topStringList =
-            (Array
-                .from(stringFrequency.entries())
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 128)
-                .map(p => p[0])
-                .sort(lexicographicSort));
-
-        //console.log(`top strings: ${JSON.stringify(topStringList)}`);
-
-        // Get the rest of the strings.
-        let otherStringSet = new Set(strings);
-        for (let s of topStringList) {
-            otherStringSet.delete(s);
-        }
-        let otherStringList = Array.from(otherStringSet).sort(lexicographicSort);
-        return new StringTable(topStringList.concat(otherStringList));
-    }
-
     public encode(): void {
         this.encodeGrammar();
-        this.encodeStringTable();
-        this.encodeStringStream();
         this.encodeAbstractSyntax();
     }
 
@@ -414,36 +381,6 @@ export class Encoder {
 
         this.w.writeVarUint(bytes.length);
         this.w.writeUint8Array(bytes);
-    }
-
-    encodeStringTable(): void {
-        this.w.writeVarUint(this.stringTable.strings.length);
-        let stringData = [];
-        this.stringTable.eachString((s: string) => {
-            const encBytes = new TextEncoder().encode(s);
-            assert(new TextDecoder('utf-8').decode(encBytes) === s);
-            stringData.push(encBytes);
-            // Note, this is *bytes* and not characters. This lets the
-            // decoder skip chunks of the string table if it wants.
-            const len = encBytes.length;
-            this.w.writeVarUint(len);
-        });
-        stringData.forEach((encBytes: Uint8Array) => {
-            this.w.writeUint8Array(encBytes);
-        });
-    }
-
-    encodeStringStream(): void {
-        // Encode the string ID stream to learn its length.
-        let stringStream = new FixedSizeBufStream();
-        let w = new EncodingWriter(stringStream);
-        for (let value of this.stripper.strings) {
-            w.writeVarUint(this.stringTable.stringIndex(value));
-        }
-        // Write the length so that the decoder can skip this part of
-        // the stream.
-        this.w.writeVarUint(stringStream.size);
-        stringStream.copyToWriteStream(this.writeStream);
     }
 
     encodeAbstractSyntax(): void {
@@ -473,10 +410,9 @@ export class Encoder {
         assert(symbol_code_map.size === num_parameters);
 
         // Write: number of built-in symbols
-        this.w.writeVarUint(7);
+        this.w.writeVarUint(6);
         // Symbols are enumerated in this order per format.
         add_symbol(applicator.t_nil, 'prim:nil');
-        add_symbol(applicator.t_string, 'prim:string');
         add_symbol(applicator.t_null, 'prim:null');
         add_symbol(applicator.t_cons, 'prim:cons');
         add_symbol(applicator.t_false, 'prim:false');
@@ -517,6 +453,32 @@ export class Encoder {
         // Assign the grammar rules.
         for (let [name, rule] of applicator.t_kind) {
             add_symbol(rule, `node:${name}/${rule.rank}`);
+        }
+
+        // Write: number of strings; then their lengths; then values.
+        this.w.writeVarUint(applicator.t_strings.size);
+        let lexicographic = (a, b) => {
+            if (a[0] < b[0]) {
+                return -1;
+            } else if (a[0] == b[0]) {
+                throw Error('unreachable: the string table should intern strings');
+            } else {
+                return 1;
+            }
+        };
+        let sorted_strings = Array.from(applicator.t_strings).sort(lexicographic);
+        let string_bytes = Array(sorted_strings.length);
+        let encoder = new TextEncoder();
+        for (let [i, [str, symbol]] of sorted_strings.entries()) {
+            const bytes = encoder.encode(str);
+            // Note, this is *bytes* and not characters. This lets the
+            // decoder skip chunks of the string table if it wants.
+            this.w.writeVarUint(bytes.length);
+            string_bytes[i] = bytes;
+            add_symbol(symbol.terminal, `string:"${str}"`);
+        }
+        for (let bytes of string_bytes) {
+            this.w.writeUint8Array(bytes);
         }
 
         // Write: number of numeric constants; then values.

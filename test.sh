@@ -35,7 +35,7 @@ time npm run decode -- $FOI.binjs > ast-out.json
 diff ast-in.json ast-out.json | \
     awk 'NR<20 {print} {x[$1] += 1} END {for (y in x) print(y, x[y])}'
 
-source_compressed_size_bytes=$(stat --printf="%s" "$FOI.br")
+source_compressed_size_bytes=$(stat -f"%z" "$FOI.br")
 binjs_compressed_size_bytes=$("$BROTLI_BIN" -w 20 -q 11 "$FOI.binjs" -c | wc -c)
 echo "compressed js    " $source_compressed_size_bytes
 echo "compressed binjs " $binjs_compressed_size_bytes

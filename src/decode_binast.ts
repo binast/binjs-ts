@@ -9,8 +9,6 @@ import { rewriteAst } from './ast_util';
 
 export class Decoder {
     readonly r: ReadStream;
-    public strings: string[];
-    stringStream: ReadStream;
     public grammar: Grammar;
     public program: S.Program;
 
@@ -20,10 +18,7 @@ export class Decoder {
 
     public decode(): void {
         this.grammar = this.decodeGrammar();
-        this.strings = this.decodeStringTable();
-        this.prepareStringStream();
         this.program = this.decodeAbstractSyntax();
-        // TODO(dpc): Should check that the string stream is exhausted.
     }
 
     decodeGrammar(): Grammar {
@@ -32,54 +27,21 @@ export class Decoder {
         return new Grammar(rules);
     }
 
-    decodeStringTable(): string[] {
-        // Number of strings.
-        let n = this.r.readVarUint();
-
-        // Length of each string, bytes.
-        let lengthBytes = Array(n);
-        for (let i = 0; i < n; i++) {
-            lengthBytes[i] = this.r.readVarUint();
-        }
-
-        // String data.
-        let stringDecoder = new TextDecoder('utf-8');
-        let strings = Array(n);
-        for (let i = 0; i < n; i++) {
-            strings[i] = stringDecoder.decode(this.r.readBytes(lengthBytes[i]));
-        }
-
-        return strings;
-    }
-
-    prepareStringStream(): void {
-        let lengthBytes = this.r.readVarUint();
-        this.stringStream = new ArrayStream(this.r.readBytes(lengthBytes));
-    }
-
-    readStringStream(): string {
-        let index = this.stringStream.readVarUint();
-        assert(0 <= index && index < this.strings.length,
-            `string stream index out of bounds: ${index} of ${this.strings.length}`);
-        return this.strings[index];
-    }
-
     decodeAbstractSyntax(): S.Program {
         const num_parameters = this.r.readVarUint();
         const num_built_in_tags = this.r.readVarUint();
-        if (num_built_in_tags < 7) {
-            throw Error('not yet implemented: decode fewer than 7 tags');
-        } else if (num_built_in_tags !== 7) {
-            throw Error(`decoder too old: encountered more than 7 built-in tags (${num_built_in_tags})`);
+        if (num_built_in_tags < 6) {
+            throw Error('not yet implemented: decode fewer than 6 tags');
+        } else if (num_built_in_tags !== 6) {
+            throw Error(`decoder too old: encountered more than 6 built-in tags (${num_built_in_tags})`);
         }
         const first_built_in_tag = num_parameters;
         const tag_nil = first_built_in_tag + 0;
-        const tag_string = first_built_in_tag + 1;
-        const tag_null = first_built_in_tag + 2;
-        const tag_cons = first_built_in_tag + 3;
-        const tag_false = first_built_in_tag + 4;
-        const tag_true = first_built_in_tag + 5;
-        const tag_undefined = first_built_in_tag + 6;
+        const tag_null = first_built_in_tag + 1;
+        const tag_cons = first_built_in_tag + 2;
+        const tag_false = first_built_in_tag + 3;
+        const tag_true = first_built_in_tag + 4;
+        const tag_undefined = first_built_in_tag + 5;
 
         const first_meta_rule = first_built_in_tag + num_built_in_tags;
         const num_ranks = this.r.readVarUint() + 1;
@@ -96,12 +58,27 @@ export class Decoder {
             rank_offset[i + 1] = rank_offset[i] + this.r.readVarUint();
         }
         const num_meta_rules = rank_offset[num_ranks];
+        const last_meta_rule = first_meta_rule + num_meta_rules - 1;
 
         const first_grammar_rule = first_meta_rule + num_meta_rules;
         const num_grammar_rules = this.grammar.rules.size;
+        const last_grammar_rule = first_grammar_rule + num_grammar_rules - 1;
 
-        const first_numeric_constant = first_grammar_rule + num_grammar_rules;
+        const first_string_constant = first_grammar_rule + num_grammar_rules;
+        const num_string_constants = this.r.readVarUint();
+        const last_string_constant = first_string_constant + num_string_constants - 1;
+        const string_lengths = Array(num_string_constants);
+        const string_constants = Array(num_string_constants);
+        for (let i = 0; i < num_string_constants; i++) {
+            string_lengths[i] = this.r.readVarUint();
+        }
+        for (let i = 0; i < num_string_constants; i++) {
+            string_constants[i] = this.r.readUtf8Bytes(string_lengths[i]);
+        }
+
+        const first_numeric_constant = first_string_constant + num_string_constants;
         const num_numeric_constants = this.r.readVarUint();
+        const last_numeric_constant = first_numeric_constant + num_numeric_constants - 1;
         const numeric_constants = Array(num_numeric_constants);
         for (let i = 0; i < num_numeric_constants; i++) {
             numeric_constants[i] = this.decodeFloat();
@@ -126,9 +103,9 @@ export class Decoder {
                 buffer.push(tag);
                 if (tag === tag_cons) {
                     buffer_tree(2, buffer);
-                } else if (first_meta_rule <= tag && tag < first_grammar_rule) {
+                } else if (first_meta_rule <= tag && tag <= last_meta_rule) {
                     buffer_tree(meta_rank(tag - first_meta_rule), buffer);
-                } else if (first_grammar_rule <= tag && tag < first_numeric_constant) {
+                } else if (first_grammar_rule <= tag && tag <= last_grammar_rule) {
                     let kind = this.grammar.nodeType(tag - first_grammar_rule);
                     buffer_tree(this.grammar.rules.get(kind).length, buffer);
                 } else {
@@ -156,9 +133,6 @@ export class Decoder {
             if (tag === tag_nil) {
                 d('prim:nil');
                 return [];
-            } else if (tag === tag_string) {
-                d('prim:string');
-                return this.strings[this.stringStream.readVarUint()];
             } else if (tag === tag_null) {
                 d('prim:null');
                 return null;
@@ -181,7 +155,7 @@ export class Decoder {
                 d(`param:${tag}`);
                 assert(tag < actuals.length);
                 return actuals[tag];
-            } else if (first_meta_rule <= tag && tag < first_grammar_rule) {
+            } else if (first_meta_rule <= tag && tag <= last_meta_rule) {
                 const rule_i = tag - first_meta_rule;
                 const rank = meta_rank(rule_i);
                 d(`P${rule_i}/${rank}`);
@@ -190,7 +164,7 @@ export class Decoder {
                     rule_actuals[i] = replay_tree(tree, actuals, debug);
                 }
                 return replay_tree(meta_rules[rule_i][Symbol.iterator](), rule_actuals, false);
-            } else if (first_grammar_rule <= tag && tag < first_numeric_constant) {
+            } else if (first_grammar_rule <= tag && tag <= last_grammar_rule) {
                 const kind = this.grammar.nodeType(tag - first_grammar_rule);
                 const props = this.grammar.rules.get(kind);
                 d(`node:${kind}/${props.length}`);
@@ -199,7 +173,12 @@ export class Decoder {
                     params[prop] = replay_tree(tree, actuals, debug);
                 }
                 return new S[kind](params);
-            } else if (first_numeric_constant <= tag && tag < first_numeric_constant + num_numeric_constants) {
+            } else if (first_string_constant <= tag && tag <= last_string_constant) {
+                const i = tag - first_string_constant;
+                const s = string_constants[i];
+                d(`string:${s}`);
+                return s;
+            } else if (first_numeric_constant <= tag && tag <= last_numeric_constant) {
                 const i = tag - first_numeric_constant;
                 assert(0 <= i && i < numeric_constants.length);
                 const n = numeric_constants[i];
@@ -210,7 +189,8 @@ export class Decoder {
             }
         };
 
-        return replay_tree(start_production[Symbol.iterator](), [], false);
+        const debug = false;
+        return replay_tree(start_production[Symbol.iterator](), [], debug);
     }
 
     private decodeFloat(): number {
