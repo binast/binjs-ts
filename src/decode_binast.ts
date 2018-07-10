@@ -23,7 +23,8 @@ export class Decoder {
 
     decodeGrammar(): Grammar {
         let length = this.r.readVarUint();
-        let rules = JSON.parse(this.r.readUtf8Bytes(length));
+        let source = this.r.readUtf8Bytes(length);
+        let rules = JSON.parse(source);
         return new Grammar(rules);
     }
 

@@ -38,7 +38,7 @@ function encode(inputFilename: string, outputFilename: string, options: EncodeOp
 
 function decode(filename: string) {
     const buffer: Buffer = fs.readFileSync(filename);
-    const byteBuffer = new Uint8Array(buffer.buffer);
+    const byteBuffer = buffer.subarray(0);
     const decoder = new Decoder(new ArrayStream(byteBuffer));
     decoder.decode();
     console.log(JSON.stringify(decoder.program, null, 2));
