@@ -447,13 +447,16 @@ export class Encoder {
     }
 
     encodeAbstractSyntax(): void {
+        const debug = false;
         let applicator = new TreeRePairApplicator(this.grammar);
         applicator.apply(this.script);
 
         let symbol_code_map = new Map<tr.Symbol, number>();
-        let add_symbol = (symbol: tr.Symbol): void => {
+        let debug_symbol_map = new Map<tr.Symbol, string>();
+        let add_symbol = (symbol: tr.Symbol, label: string): void => {
             assert(!symbol_code_map.has(symbol));
             symbol_code_map.set(symbol, symbol_code_map.size);
+            debug_symbol_map.set(symbol, label);
         };
 
         // Write: number of parameters.
@@ -463,23 +466,23 @@ export class Encoder {
         }
         const num_parameters = parameters.size;
         this.w.writeVarUint(num_parameters);
+        let id = 0;
         for (let parameter of parameters) {
-            add_symbol(parameter);
+            add_symbol(parameter, `param:${id++}`);
         }
+        assert(symbol_code_map.size === num_parameters);
 
         // Write: number of built-in symbols
         this.w.writeVarUint(7);
         // Symbols are enumerated in this order per format.
-        add_symbol(applicator.t_nil);
-        add_symbol(applicator.t_string);
-        add_symbol(applicator.t_null);
-        add_symbol(applicator.t_cons);
-        add_symbol(applicator.t_false);
-        add_symbol(applicator.t_true);
-        add_symbol(applicator.t_undefined);
+        add_symbol(applicator.t_nil, 'prim:nil');
+        add_symbol(applicator.t_string, 'prim:string');
+        add_symbol(applicator.t_null, 'prim:null');
+        add_symbol(applicator.t_cons, 'prim:cons');
+        add_symbol(applicator.t_false, 'prim:false');
+        add_symbol(applicator.t_true, 'prim:true');
+        add_symbol(applicator.t_undefined, 'prim:undefined');
 
-        // Write: number of meta-rules.
-        this.w.writeVarUint(applicator.tr_grammar.rules.size);
         // Meta-rules are grouped by rank and enumerated that way:
         // <n = number of ranks - 1>
         // <number of rank 0 rules>
@@ -496,6 +499,7 @@ export class Encoder {
         this.w.writeVarUint(meta_by_size.size - 1);
         let last_rank = 0;
         let symbols_by_size = Array.from(meta_by_size).sort((a, b) => a[0] - b[0]);
+        id = 0;
         for (let [rank, count] of symbols_by_size) {
             if (rank != 0) {
                 const delta = rank - last_rank - 1;
@@ -505,19 +509,21 @@ export class Encoder {
             this.w.writeVarUint(count.size);
 
             // Assign the labels.
-            count.forEach(add_symbol);
+            for (let symbol of count) {
+                add_symbol(symbol, `P${id++}/${symbol.rank}`);
+            }
         }
 
         // Assign the grammar rules.
-        for (let rule of applicator.t_kind.values()) {
-            add_symbol(rule);
+        for (let [name, rule] of applicator.t_kind) {
+            add_symbol(rule, `node:${name}/${rule.rank}`);
         }
 
         // Write: number of numeric constants; then values.
         this.w.writeVarUint(applicator.t_numbers.size);
         for (let [value, symbol] of Array.from(applicator.t_numbers).sort((a, b) => b[1].count - a[1].count)) {
             this.w.writeFloat(value);
-            add_symbol(symbol.terminal);
+            add_symbol(symbol.terminal, `float:${value}`);
         }
 
         let write_tree = (tree: tr.Node) => {
@@ -530,11 +536,19 @@ export class Encoder {
         // Write the rules.
         for (let [_, symbols] of symbols_by_size) {
             for (let symbol of symbols) {
-                write_tree(applicator.tr_grammar.rules.get(symbol));
+                const tree = applicator.tr_grammar.rules.get(symbol);
+                if (debug) {
+                    console.log(symbol_code_map.get(symbol), ':', debug_symbol_map.get(symbol), '::=');
+                    tr.debug_print(debug_symbol_map, tree);
+                }
+                write_tree(tree);
             }
         }
 
         // Write the tree.
         write_tree(applicator.tr_grammar.tree);
+        if (debug) {
+            tr.debug_print(debug_symbol_map, applicator.tr_grammar.tree);
+        }
     }
 }

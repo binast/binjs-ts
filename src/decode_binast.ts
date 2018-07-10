@@ -111,9 +111,9 @@ export class Decoder {
         let meta_rank = (i: number): number => {
             assert(0 <= i && i < num_meta_rules, `${i}`);
             // TODO(dpc): This should binary search.
-            for (let i = 0; i < num_ranks; i++) {
-                if (i < rank_offset[i + 1]) {
-                    return ranks[i];
+            for (let j = 0; j < num_ranks; j++) {
+                if (i < rank_offset[j + 1]) {
+                    return ranks[j];
                 }
             }
             assert(false, 'unreachable');
@@ -129,7 +129,7 @@ export class Decoder {
                 } else if (first_meta_rule <= tag && tag < first_grammar_rule) {
                     buffer_tree(meta_rank(tag - first_meta_rule), buffer);
                 } else if (first_grammar_rule <= tag && tag < first_numeric_constant) {
-                    let kind = this.grammar.indexRuleMap.get(tag - first_grammar_rule);
+                    let kind = this.grammar.nodeType(tag - first_grammar_rule);
                     buffer_tree(this.grammar.rules.get(kind).length, buffer);
                 } else {
                     // Nothing to do!
@@ -148,23 +148,69 @@ export class Decoder {
             meta_rules[i] = buffer_tree(1, []);
         }
 
-        let tree = buffer_tree(1, []);
+        const start_production = buffer_tree(1, []);
 
-        // TODO: working here on decoding
-        let replay_tree = (tree: number[], actuals: any[]): any => {
-            const tag = tree.shift();
+        let replay_tree = (tree: Iterator<number>, actuals: any[], debug: boolean): any => {
+            let d = debug ? console.log : (...arg) => void (0);
+            let tag = tree.next().value;
             if (tag === tag_nil) {
+                d('prim:nil');
                 return [];
             } else if (tag === tag_string) {
+                d('prim:string');
                 return this.strings[this.stringStream.readVarUint()];
             } else if (tag === tag_null) {
+                d('prim:null');
                 return null;
             } else if (tag === tag_cons) {
-                // TODO, lists:
+                d('prim:cons');
+                const elem = replay_tree(tree, actuals, debug);
+                const rest = replay_tree(tree, actuals, debug);
+                rest.unshift(elem);
+                return rest;
+            } else if (tag === tag_false) {
+                d('prim:false');
+                return false;
+            } else if (tag === tag_true) {
+                d('prim:true');
+                return true;
+            } else if (tag === tag_undefined) {
+                d('prim:undefined');
+                return undefined;
+            } else if (0 <= tag && tag < num_parameters) {
+                d(`param:${tag}`);
+                assert(tag < actuals.length);
+                return actuals[tag];
+            } else if (first_meta_rule <= tag && tag < first_grammar_rule) {
+                const rule_i = tag - first_meta_rule;
+                const rank = meta_rank(rule_i);
+                d(`P${rule_i}/${rank}`);
+                const rule_actuals = Array(rank);
+                for (let i = 0; i < rank; i++) {
+                    rule_actuals[i] = replay_tree(tree, actuals, debug);
+                }
+                return replay_tree(meta_rules[rule_i][Symbol.iterator](), rule_actuals, false);
+            } else if (first_grammar_rule <= tag && tag < first_numeric_constant) {
+                const kind = this.grammar.nodeType(tag - first_grammar_rule);
+                const props = this.grammar.rules.get(kind);
+                d(`node:${kind}/${props.length}`);
+                const params = {};
+                for (let prop of props) {
+                    params[prop] = replay_tree(tree, actuals, debug);
+                }
+                return new S[kind](params);
+            } else if (first_numeric_constant <= tag && tag < first_numeric_constant + num_numeric_constants) {
+                const i = tag - first_numeric_constant;
+                assert(0 <= i && i < numeric_constants.length);
+                const n = numeric_constants[i];
+                d(`float:${n}`);
+                return n;
+            } else {
+                assert(false, `unreachable, read a bogus tag ${tag}`);
             }
         };
 
-        return replay_tree(tree, []);
+        return replay_tree(start_production[Symbol.iterator](), [], false);
     }
 
     private decodeFloat(): number {

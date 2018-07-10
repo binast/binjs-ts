@@ -28,8 +28,10 @@ if [ ! -f "$FOI.br" ]; then
 fi
 
 npm run build
-npm run encode -- $FOI --dump-ast > ast-in.json
-npm run decode -- $FOI.binjs > ast-out.json
+echo encode
+time npm run encode -- $FOI --dump-ast > ast-in.json
+echo decode
+time npm run decode -- $FOI.binjs > ast-out.json
 diff ast-in.json ast-out.json | \
     awk 'NR<20 {print} {x[$1] += 1} END {for (y in x) print(y, x[y])}'
 

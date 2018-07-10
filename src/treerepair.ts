@@ -516,9 +516,9 @@ export class Digrams {
         }
     }
 
-    removeNode(node: Node) {
+    removeNode(node: Node, node_index: number) {
         if (node.parent) {
-            this.remove(node.parent, node.index_slow, node);
+            this.remove(node.parent, node_index, node);
         }
         for (let [i, child] of node.child_entries()) {
             this.remove(node, i, child);
@@ -629,7 +629,7 @@ export class Grammar {
         let was_last_child = parent.parent && parent.parent.lastChild === parent;
 
         // Remove this node from the digram graph; it is going away.
-        this.digrams.removeNode(parent);
+        this.digrams.removeNode(parent, parent.index_slow);
 
         // Build an "invocation" node which adopts this node's children.
         let invocation = new Node(new_symbol);
@@ -654,7 +654,7 @@ export class Grammar {
         for (let [i, child] of parent.child_entries()) {
             if (i === digram.index) {
                 // This child is erased.
-                this.digrams.removeNode(child);
+                this.digrams.removeNode(child, i);
                 // Lift its children, if any.
                 for (let [j, grandchild] of child.child_entries()) {
                     prev = adopt_child(child, j, grandchild, prev);
