@@ -22,6 +22,11 @@ function checkVarScope(scope, lexicals, varDecls, captures) {
     expect(scope.capturedNames).to.deep.equal(captures);
 }
 
+function checkParameterScope(scope, parameters, captures) {
+    expect(scope.parameterNames).to.deep.equal(parameters);
+    expect(scope.capturedNames).to.deep.equal(captures);
+}
+
 describe('Declared and Captured Names', () => {
     it('should put top-level vars in AssertedVarScope', () => {
         compileAndTest('var foo;', ast => {
@@ -41,6 +46,56 @@ describe('Declared and Captured Names', () => {
     it('should note captured top-level functions', () => {
         compileAndTest('function foo() {}; function bar() { foo(); }', ast => {
             checkVarScope(ast.scope, [], ['foo', 'bar'], ['foo']);
+        });
+    });
+    it('should elide FunctionDefinition name from parameter decls', () => {
+        compileAndTest('function foo() { }', ast => {
+            const func = ast.statements[0];
+            checkParameterScope(func.parameterScope, [], []);
+            checkVarScope(func.bodyScope, [], [], []);
+        });
+    });
+    it('should elide FunctionExpression name from parameter decls', () => {
+        compileAndTest('(function foo() { })', ast => {
+            const func = ast.statements[0].expression;
+            checkParameterScope(func.parameterScope, [], []);
+            checkVarScope(func.bodyScope, [], [], []);
+        });
+    });
+    it('should capture outer var binding for FunctionDefinition recursion', () => {
+        compileAndTest('function foo() { foo(); }', ast => {
+            checkVarScope(ast.scope, [], ['foo'], ['foo']);
+        });
+    });
+    it('should not capture function expression name for direct recursion in parameter scope', () => {
+        compileAndTest('(function foo() { foo(); })', ast => {
+            const func = ast.statements[0].expression;
+            checkParameterScope(func.parameterScope, [], []);
+        });
+    });
+    it('should capture hacky non-standard FunctionExpression name in parameter scope', () => {
+        compileAndTest('(function foo() { (function inner() { foo(); }); })', ast => {
+            const func = ast.statements[0].expression;
+            checkParameterScope(func.parameterScope, [], ['foo']);
+        });
+    });
+    it('should not capture directly used parameters in FunctionDefinition', () => {
+        compileAndTest('function foo(a) { a(); }', ast => {
+            const func = ast.statements[0];
+            checkParameterScope(func.parameterScope, ['a'], []);
+        });
+    });
+    it('should capture nestedly used parameters in FunctionDefinition', () => {
+        compileAndTest('function foo(a) { (function () { a(); }); }', ast => {
+            const func = ast.statements[0];
+            checkParameterScope(func.parameterScope, ['a'], ['a']);
+        });
+    });
+    it('should handle name shadowing in FunctionExpression parameter scope', () => {
+        compileAndTest('(function foo(foo) { })', ast => {
+            const func = ast.statements[0].expression;
+            checkParameterScope(func.parameterScope, ['foo'], []);
+            checkVarScope(func.bodyScope, [], [], []);
         });
     });
 });

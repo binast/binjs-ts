@@ -151,15 +151,27 @@ class VarScope extends BaseScope {
 
 class ParameterScope extends BaseScope {
     parameterNames: Array<string>;
+    functionName: string | null;
+    isCatchClause: boolean;
 
-    constructor() {
+    constructor(isCatchClause) {
         super();
         this.parameterNames = new Array();
+        this.functionName = null;
+        this.isCatchClause = isCatchClause;
     }
 
     addParameterName(name: string) {
         super.addName(name, 'parameter');
         this.parameterNames.push(name);
+    }
+
+    setFunctionExpressionName(name: string) {
+        this.functionName = name;
+    }
+
+    doesBindName(name: string) /* override */ {
+        return super.doesBindName(name) || name === this.functionName;
     }
 
     extractParameterScope(): S.AssertedParameterScope {
@@ -200,8 +212,8 @@ class Context {
         const blockScope = new BlockScope();
         return this.enterScope<BlockScope, T>(blockScope, f);
     }
-    enterParameterScope<T>(f: (ParameterScope) => T): T {
-        const paramScope = new ParameterScope();
+    enterParameterScope<T>(f: (ParameterScope) => T, isCatchClause = false): T {
+        const paramScope = new ParameterScope(isCatchClause);
         return this.enterScope<ParameterScope, T>(paramScope, f);
     }
     private enterScope<S extends BaseScope, T>(scope: S, f: (S) => T): T {
@@ -326,7 +338,7 @@ class Context {
             // If we're crossing a VarScope boundary, which corresponds
             // to function scope, set flag to capture names as we're
             // entering a caller function's scope.
-            if (!capture && (scope instanceof VarScope)) {
+            if (!capture && (scope instanceof ParameterScope && !scope.isCatchClause)) {
                 capture = true;
             }
         });
@@ -474,13 +486,19 @@ export class Importer {
                 return null;
         }
     }
-    liftBindingIdentifier(json: any): S.BindingIdentifier {
+
+    liftUnboundBindingIdentifier(json: any): S.BindingIdentifier {
         assertNodeType(json, 'BindingIdentifier');
         assertType(json.name, 'string');
 
         const name = this.liftIdentifier(json.name);
-        this.cx.noteBoundName(name);
         return new S.BindingIdentifier({ name });
+    }
+
+    liftBindingIdentifier(json: any): S.BindingIdentifier {
+        const bindingIdent = this.liftUnboundBindingIdentifier(json);
+        this.cx.noteBoundName(bindingIdent.name);
+        return bindingIdent;
     }
 
     liftIdentifier(name: string): S.Identifier {
@@ -498,9 +516,7 @@ export class Importer {
         this.cx.bindVars(() => this.liftBindingIdentifier(json.name));
 
         return this.cx.enterParameterScope(ps => {
-            const name = this.cx.bindParameters(() => {
-                return this.liftBindingIdentifier(json.name);
-            });
+            const name = this.liftUnboundBindingIdentifier(json.name);
             const params = this.liftFormalParameters(json.params);
             const parameterScope = ps.extractParameterScope();
 
@@ -710,7 +726,7 @@ export class Importer {
             const body = this.liftBlock(json.body);
             const bindingScope = bs.extractParameterScope();
             return new S.CatchClause({ bindingScope, binding, body });
-        });
+        }, /* isCatchClause = */ true);
     }
 
     liftTryFinallyStatement(json: any): S.TryFinallyStatement {
@@ -940,11 +956,11 @@ export class Importer {
         const isGenerator = json.isGenerator as boolean;
 
         return this.cx.enterParameterScope(ps => {
-            const name = this.cx.bindParameters(() => {
-                return json.name !== null ?
-                    this.liftBindingIdentifier(json.name)
-                    : null;
-            });
+            const name = json.name === null ?
+                           null :
+                           this.liftUnboundBindingIdentifier(json.name);
+            if (name)
+                ps.setFunctionExpressionName(name.name);
             const params = this.liftFormalParameters(json.params);
             return this.cx.enterVarScope(bs => {
                 const body = this.liftFunctionBody(json.body);
