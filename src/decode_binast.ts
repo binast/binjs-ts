@@ -28,10 +28,15 @@ export class Decoder {
     }
 
     decodeGrammar(): Grammar {
-        let length = this.r.readVarUint();
-        let source = this.r.readUtf8Bytes(length);
-        let rules = JSON.parse(source);
-        return new Grammar(rules);
+        const numRules = this.r.readVarUint();
+
+        const grammar = new Grammar();
+        for (let i = 0; i < numRules; i++) {
+            const length = this.r.readVarUint();
+            const grammarNode = this.r.readUtf8Bytes(length);
+            grammar.rules.set(grammarNode, [...Object.keys(new S[grammarNode]({}))]);
+        }
+        return grammar;
     }
 
     decodeAbstractSyntax(): S.Program {

@@ -296,6 +296,7 @@ class TreeRePairApplicator {
         } else if (node === null) {
             return new tr.Node(this.t_null);
         } else if (node === undefined) {
+            // TODO: Remove. Never used?
             return new tr.Node(this.t_undefined);
         } else if (typeof node === 'string') {
             return new tr.Node(this.str(node));
@@ -371,16 +372,17 @@ export class Encoder {
         this.grammar.visit(this.script);
         assert(this.grammar.rules.has('Script'),
             'should have a grammar rule for top-level scripts');
-        // TODO: Encode this in a better order and not as JSON.
-        let cheesyGrammar = {};
-        for (let [key, value] of this.grammar.rules.entries()) {
-            cheesyGrammar[key] = value;
+        // TODO: Encode this in a better order
+        let grammarNodes = [];
+        for (let key of this.grammar.rules.keys()) {
+            grammarNodes.push(new TextEncoder().encode(key));
         }
-        let bytes =
-            new TextEncoder().encode(JSON.stringify(cheesyGrammar));
 
-        this.w.writeVarUint(bytes.length);
-        this.w.writeUint8Array(bytes);
+        this.w.writeVarUint(grammarNodes.length);
+        for (let str of grammarNodes) {
+            this.w.writeVarUint(str.length);
+            this.w.writeUint8Array(str);
+        }
     }
 
     encodeAbstractSyntax(): void {
