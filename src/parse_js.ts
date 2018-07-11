@@ -493,6 +493,10 @@ export class Importer {
 
         const isAsync = false;
         const isGenerator = json.isGenerator as boolean;
+
+        // Function Decls are var bindings in the enclosing scope
+        this.cx.bindVars(() => this.liftBindingIdentifier(json.name));
+
         return this.cx.enterParameterScope(ps => {
             const name = this.cx.bindParameters(() => {
                 return this.liftBindingIdentifier(json.name);
