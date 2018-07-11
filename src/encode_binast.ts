@@ -390,9 +390,9 @@ export class Encoder {
 
         let symbol_code_map = new Map<tr.Symbol, number>();
         let debug_symbol_map = new Map<tr.Symbol, string>();
-        let add_symbol = (symbol: tr.Symbol, label: string): void => {
+        let add_symbol = (symbol: tr.Symbol, label: string, value?: number): void => {
             assert(!symbol_code_map.has(symbol));
-            symbol_code_map.set(symbol, symbol_code_map.size);
+            symbol_code_map.set(symbol, value === undefined ? symbol_code_map.size : value);
             debug_symbol_map.set(symbol, label);
         };
 
@@ -403,10 +403,10 @@ export class Encoder {
         }
         const num_parameters = parameters.size;
         this.w.writeVarUint(num_parameters);
-        let id = 0;
         for (let parameter of parameters) {
-            add_symbol(parameter, `param:${id++}`);
+            add_symbol(parameter, 'param:0', 0);
         }
+
         assert(symbol_code_map.size === num_parameters);
 
         // Write: number of built-in symbols

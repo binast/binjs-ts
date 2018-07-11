@@ -144,7 +144,7 @@ export class Decoder {
             } else if (tag === tag_undefined) {
                 d('prim:undefined', tos().debug_tag);
                 return undefined;
-            } else if (0 <= tag && tag < num_parameters) {
+            } else if (0 === tag) {
                 d(`param:${tag}`, tos().debug_tag);
                 stack.push(actuals());
                 const result = replay_tree(false);
