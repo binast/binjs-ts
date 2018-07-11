@@ -7,6 +7,12 @@ import { Grammar } from './grammar';
 import { MruDeltaReader } from './delta';
 import { rewriteAst } from './ast_util';
 
+type StackFrame = {
+    debug_tag: number,
+    tree: Iterator<number>;
+    actuals: StackFrame;
+};
+
 export class Decoder {
     readonly r: ReadStream;
     public grammar: Grammar;
@@ -45,20 +51,7 @@ export class Decoder {
         const tag_undefined = first_built_in_tag + 5;
 
         const first_meta_rule = first_built_in_tag + num_built_in_tags;
-        const num_ranks = this.r.readVarUint() + 1;
-        // The i-th rank's rules have this many parameters.
-        const ranks = Array(num_ranks);
-        ranks[0] = 0;
-        // The next i-th rank's rule should appear at this offset.
-        const rank_offset = Array(num_ranks + 1);
-        rank_offset[0] = 0;
-        rank_offset[1] = this.r.readVarUint();
-        let meta_rule_size_offset = new Map<number, number>([[0, 0]]);
-        for (let i = 1; i < num_ranks; i++) {
-            ranks[i] = ranks[i - 1] + this.r.readVarUint() + 1;
-            rank_offset[i + 1] = rank_offset[i] + this.r.readVarUint();
-        }
-        const num_meta_rules = rank_offset[num_ranks];
+        const num_meta_rules = this.r.readVarUint();
         const last_meta_rule = first_meta_rule + num_meta_rules - 1;
 
         const first_grammar_rule = first_meta_rule + num_meta_rules;
@@ -85,118 +78,125 @@ export class Decoder {
             numeric_constants[i] = this.decodeFloat();
         }
 
-        // Given an index into the meta rules, returns the rank of that rule.
-        let meta_rank = (i: number): number => {
-            assert(0 <= i && i < num_meta_rules, `${i}`);
-            // TODO(dpc): This should binary search.
-            for (let j = 0; j < num_ranks; j++) {
-                if (i < rank_offset[j + 1]) {
-                    return ranks[j];
-                }
-            }
-            assert(false, 'unreachable');
-        };
-
-        // Reads and caches tree data.
-        let buffer_tree = (n: number, buffer: number[]): number[] => {
-            for (let i = 0; i < n; i++) {
-                const tag = this.r.readVarUint();
-                buffer.push(tag);
-                if (tag === tag_cons) {
-                    buffer_tree(2, buffer);
-                } else if (first_meta_rule <= tag && tag <= last_meta_rule) {
-                    buffer_tree(meta_rank(tag - first_meta_rule), buffer);
-                } else if (first_grammar_rule <= tag && tag <= last_grammar_rule) {
-                    let kind = this.grammar.nodeType(tag - first_grammar_rule);
-                    buffer_tree(this.grammar.rules.get(kind).length, buffer);
-                } else {
-                    // Nothing to do!
-                }
-            }
-            return buffer;
-        };
-
-        // Read the meta rules.
-        let rank_i = 0;
-        let meta_rules = Array(num_meta_rules);
+        // Read the lengths of meta rules, in bytes.
+        const meta_rule_lengths = Array(num_meta_rules);
         for (let i = 0; i < num_meta_rules; i++) {
-            while (rank_offset[rank_i + 1] < i) {
-                rank_i++;
-            }
-            meta_rules[i] = buffer_tree(1, []);
+            meta_rule_lengths[i] = this.r.readVarUint();
         }
 
-        const start_production = buffer_tree(1, []);
+        // Read the meta rule data to replay it later.
+        const meta_rules = Array(num_meta_rules);
+        for (let [i, size] of meta_rule_lengths.entries()) {
+            meta_rules[i] = this.r.readBytes(size);
+        }
 
-        let replay_tree = (tree: Iterator<number>, actuals: any[], debug: boolean): any => {
+        // Read the size of the tree.
+        // TODO(dpc): When skipping we will need metadata about that, including this length.
+        const _start_length = this.r.readVarUint();
+
+        // This produces the codes in the tail of the file.
+        let rest = function* () {
+            while (true) {
+                yield this.r.readVarUint();
+            }
+        }.bind(this);
+        // This produces the codes for a meta-rule from a buffer.
+        let read_meta_rule = function* (buffer) {
+            const r = new ArrayStream(buffer);
+            while (true) {
+                yield r.readVarUint();
+            }
+        };
+
+        // The top stack frame...
+        let stack: StackFrame[] = [{
+            debug_tag: 0,
+            tree: rest(),       // ... consumes the rest of the file.
+            actuals: null,      // ... does not have parameters.
+        }];
+        let tos = (): StackFrame => stack[stack.length - 1];
+        let actuals = (): StackFrame => tos().actuals;
+        let next_at_tos = (): number => tos().tree.next().value;
+
+        // TODO(dpc): Keep the TOS in a variable.
+        // The protocol here: The caller pushes and pops.
+        let replay_tree = (debug: boolean): any => {
             let d = debug ? console.log : (...arg) => void (0);
-            let tag = tree.next().value;
+            let tag = next_at_tos();
             if (tag === tag_nil) {
-                d('prim:nil');
+                d('prim:nil', tos().debug_tag);
                 return [];
             } else if (tag === tag_null) {
-                d('prim:null');
+                d('prim:null', tos().debug_tag);
                 return null;
             } else if (tag === tag_cons) {
-                d('prim:cons');
-                const elem = replay_tree(tree, actuals, debug);
-                const rest = replay_tree(tree, actuals, debug);
+                d('prim:cons', tos().debug_tag);
+                const elem = replay_tree(debug);
+                const rest = replay_tree(debug);
                 rest.unshift(elem);
                 return rest;
             } else if (tag === tag_false) {
-                d('prim:false');
+                d('prim:false', tos().debug_tag);
                 return false;
             } else if (tag === tag_true) {
-                d('prim:true');
+                d('prim:true', tos().debug_tag);
                 return true;
             } else if (tag === tag_undefined) {
-                d('prim:undefined');
+                d('prim:undefined', tos().debug_tag);
                 return undefined;
             } else if (0 <= tag && tag < num_parameters) {
-                d(`param:${tag}`);
-                assert(tag < actuals.length);
-                return actuals[tag];
+                d(`param:${tag}`, tos().debug_tag);
+                stack.push(actuals());
+                const result = replay_tree(false);
+                stack.pop();
+                return result;
             } else if (first_meta_rule <= tag && tag <= last_meta_rule) {
                 const rule_i = tag - first_meta_rule;
-                const rank = meta_rank(rule_i);
-                d(`P${rule_i}/${rank}`);
-                const rule_actuals = Array(rank);
-                for (let i = 0; i < rank; i++) {
-                    rule_actuals[i] = replay_tree(tree, actuals, debug);
-                }
-                return replay_tree(meta_rules[rule_i][Symbol.iterator](), rule_actuals, false);
+                d(`P${rule_i}`, tos().debug_tag);
+                stack.push({
+                    debug_tag: tos().debug_tag + 1,
+                    tree: read_meta_rule(meta_rules[rule_i]),
+                    actuals: tos(),
+                });
+                const result = replay_tree(false);
+                stack.pop();
+                return result;
             } else if (first_grammar_rule <= tag && tag <= last_grammar_rule) {
                 const kind = this.grammar.nodeType(tag - first_grammar_rule);
                 const props = this.grammar.rules.get(kind);
-                d(`node:${kind}/${props.length}`);
+                d(`node:${kind}/${props.length}`, tos().debug_tag);
                 const params = {};
                 for (let prop of props) {
-                    params[prop] = replay_tree(tree, actuals, debug);
+                    params[prop] = replay_tree(debug);
                 }
                 return new S[kind](params);
             } else if (first_string_constant <= tag && tag <= last_string_constant) {
                 const i = tag - first_string_constant;
                 const s = string_constants[i];
-                d(`string:${s}`);
+                d(`string:${s}`, tos().debug_tag);
                 return s;
             } else if (first_numeric_constant <= tag && tag <= last_numeric_constant) {
                 const i = tag - first_numeric_constant;
                 assert(0 <= i && i < numeric_constants.length);
                 const n = numeric_constants[i];
-                d(`float:${n}`);
+                d(`float:${n}`, tos().debug_tag);
                 return n;
             } else {
                 assert(false, `unreachable, read a bogus tag ${tag}`);
             }
-        };
+        }
 
-        const debug = false;
-        return replay_tree(start_production[Symbol.iterator](), [], debug);
+        const result = replay_tree(false);
+        assert(stack.length == 1);
+        // TODO(dpc): Remove this assertion when streaming.
+        // TODO(dpc): Make rest() to stop at end of file and enable this assertion.
+        //assert(tos().tree.next().done);
+        return result;
     }
 
     private decodeFloat(): number {
         let buf = this.r.readBytes(8);
-        let float_buf = new Float64Array(buf.buffer.slice(0, 8));
+        let float_buf = new Float64Array(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
         return float_buf[0];
     }
 }

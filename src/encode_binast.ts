@@ -419,35 +419,14 @@ export class Encoder {
         add_symbol(applicator.t_true, 'prim:true');
         add_symbol(applicator.t_undefined, 'prim:undefined');
 
-        // Meta-rules are grouped by rank and enumerated that way:
-        // <n = number of ranks - 1>
-        // <number of rank 0 rules>
-        // n * <delta from last rank - 1><number of rules with this rank>
-        const meta_by_size = new Map<number, Set<tr.Nonterminal>>([[0, new Set()]]);
+        // Write: number of meta-rules.
+        let num_meta_rules = applicator.tr_grammar.rules.size;
+        this.w.writeVarUint(num_meta_rules);
+        // Assign the meta-rules.
+        // TODO(dpc): Sort these by frequency.
+        let i = 0;
         for (let symbol of applicator.tr_grammar.rules.keys()) {
-            let symbols = meta_by_size.get(symbol.rank);
-            if (!symbols) {
-                symbols = new Set<tr.Nonterminal>();
-                meta_by_size.set(symbol.rank, symbols);
-            }
-            symbols.add(symbol);
-        }
-        this.w.writeVarUint(meta_by_size.size - 1);
-        let last_rank = 0;
-        let symbols_by_size = Array.from(meta_by_size).sort((a, b) => a[0] - b[0]);
-        id = 0;
-        for (let [rank, count] of symbols_by_size) {
-            if (rank != 0) {
-                const delta = rank - last_rank - 1;
-                this.w.writeVarUint(delta);
-                last_rank = rank;
-            }
-            this.w.writeVarUint(count.size);
-
-            // Assign the labels.
-            for (let symbol of count) {
-                add_symbol(symbol, `P${id++}/${symbol.rank}`);
-            }
+            add_symbol(symbol, `rule:${i++}/${symbol.rank}`);
         }
 
         // Assign the grammar rules.
@@ -488,29 +467,49 @@ export class Encoder {
             add_symbol(symbol.terminal, `float:${value}`);
         }
 
-        let write_tree = (tree: tr.Node) => {
-            for (let node of tr.pre_order(tree)) {
-                let code = symbol_code_map.get(node.label);
-                this.w.writeVarUint(code);
+        // Write the meta-rule lengths.
+        const rule_bodies: FixedSizeBufStream[] = [];
+        for (let [symbol, body] of applicator.tr_grammar.rules) {
+            if (debug) {
+                console.log(`${symbol_code_map.get(symbol)} : ${debug_symbol_map.get(symbol)} ::=`);
+                tr.debug_print(debug_symbol_map, body);
             }
-        };
+
+            const encoded = this.encodeRuleBody(symbol_code_map, body);
+            this.w.writeVarUint(encoded.size);
+            rule_bodies.push(encoded);
+        }
+        assert(rule_bodies.length == num_meta_rules);
 
         // Write the rules.
-        for (let [_, symbols] of symbols_by_size) {
-            for (let symbol of symbols) {
-                const tree = applicator.tr_grammar.rules.get(symbol);
-                if (debug) {
-                    console.log(symbol_code_map.get(symbol), ':', debug_symbol_map.get(symbol), '::=');
-                    tr.debug_print(debug_symbol_map, tree);
-                }
-                write_tree(tree);
-            }
+        for (let encoded of rule_bodies) {
+            assert(encoded);
+            encoded.copyToWriteStream(this.writeStream);
         }
 
         // Write the tree.
-        write_tree(applicator.tr_grammar.tree);
+        let start_body = this.encodeRuleBody(symbol_code_map, applicator.tr_grammar.tree);
+        if (debug) {
+            console.log(`writing start production of ${start_body.size} bytes`);
+        }
+        this.w.writeVarUint(start_body.size);
+        start_body.copyToWriteStream(this.writeStream);
         if (debug) {
             tr.debug_print(debug_symbol_map, applicator.tr_grammar.tree);
         }
+    }
+
+    writeTree(symbol_code_map: Map<tr.Symbol, number>, w: EncodingWriter, tree: tr.Node): void {
+        for (let node of tr.pre_order(tree)) {
+            let code = symbol_code_map.get(node.label);
+            w.writeVarUint(code);
+        }
+    }
+
+    encodeRuleBody(symbol_code_map: Map<tr.Symbol, number>, body: any): FixedSizeBufStream {
+        let result = new FixedSizeBufStream();
+        let writer = new EncodingWriter(result);
+        this.writeTree(symbol_code_map, writer, body);
+        return result;
     }
 }
