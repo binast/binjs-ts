@@ -366,12 +366,17 @@ export class DigramTable {
         this.parents = new Map();
     }
 
-    get(a: Symbol, i: number, b: Symbol): Digram {
+    partial_get(a: Symbol): Map<number, Map<Symbol, Digram>> {
         let parent_step = this.parents.get(a);
         if (!parent_step) {
             parent_step = new Map();
             this.parents.set(a, parent_step);
         }
+        return parent_step;
+    }
+
+    get(a: Symbol, i: number, b: Symbol): Digram {
+        let parent_step = this.partial_get(a);
         let index_step = parent_step.get(i);
         if (!index_step) {
             index_step = new Map();
@@ -793,29 +798,19 @@ export class Grammar {
             visit(this.stats.get(symbol), body);
         }
 
-        // Compute the transitive closure of the graph.
-        let work = Array.from(graph.keys());
-        let mapper = (entry: [Nonterminal, Map<Nonterminal, number>]): [Nonterminal, Set<Nonterminal>] => [entry[0], new Set(entry[1].keys())];
-        let closure = new Map(Array.from(graph.entries()).map(mapper));
-        while (work.length) {
-            const t = work.pop();
-            const reachable = closure.get(t);
-            const old_size = reachable.size;
-            for (let step of reachable) {
-                assert(step !== t, 'grammar is not linear');
-                for (let next_step of closure.get(step)) {
-                    reachable.add(next_step);
-                }
+        // Compute the "reverse hierarchical order"
+        const visited = new Set<Nonterminal>();
+        function* reverse_hierarchical_order_visit(item) {
+            if (visited.has(item)) {
+                return;
             }
-            if (reachable.size !== old_size) {
-                for (let predecessor of inv_graph.get(t).keys()) {
-                    work.push(predecessor);
-                }
+            visited.add(item);
+            yield item;
+            for (const used of graph.get(item).keys()) {
+                yield* reverse_hierarchical_order_visit(used);
             }
         }
-        // We get "reverse hierarchical order" by sorting the size of
-        // the transitive closure of the graph.
-        return Array.from(closure.entries()).sort((a, b) => b[1].size - a[1].size).map(a => a[0]);
+        return [...reverse_hierarchical_order_visit(null)];
     }
 
     optimize(): void {
