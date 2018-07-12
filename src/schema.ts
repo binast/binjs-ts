@@ -139,6 +139,12 @@ export class AssertedParameterScope {
 //
 
 export abstract class BaseNode {
+    constructor() {
+    }
+
+    get nodeKindName(): string {
+        return this.constructor.name as string;
+    }
 }
 
 export type Program = (Script | Module);
@@ -597,10 +603,12 @@ export class LiteralBooleanExpression extends BaseNode {
 }
 
 // A `NumericLiteral` for which the Number value of its MV is positive infinity.
-export class LiteralInfinityExpression extends BaseNode { };
+export class LiteralInfinityExpression extends BaseNode {
+};
 
 // `NullLiteral`
-export class LiteralNullExpression extends BaseNode { };
+export class LiteralNullExpression extends BaseNode {
+};
 
 // `NumericLiteral`
 export class LiteralNumericExpression extends BaseNode {
@@ -841,7 +849,8 @@ export class NewExpression extends BaseNode {
     }
 }
 
-export class NewTargetExpression extends BaseNode { };
+export class NewTargetExpression extends BaseNode {
+};
 
 export class ObjectExpression extends BaseNode {
     readonly properties: Array<ObjectProperty>;
@@ -895,7 +904,8 @@ export class TemplateExpression extends BaseNode {
 }
 
 // `PrimaryExpression :: this`
-export class ThisExpression extends BaseNode { };
+export class ThisExpression extends BaseNode {
+};
 
 // `UpdateExpression :: LeftHandSideExpression ++`,
 // `UpdateExpression :: LeftHandSideExpression --`,
@@ -970,7 +980,11 @@ export class DoWhileStatement extends BaseNode {
     }
 }
 
-export class EmptyStatement extends BaseNode { };
+export class EmptyStatement extends BaseNode {
+    constructor(params: {}) {
+        super();
+    }
+};
 
 export class ExpressionStatement extends BaseNode {
     readonly expression: Expression;
@@ -1078,6 +1092,12 @@ export class IfStatement extends BaseNode {
 export class LabelledStatement extends BaseNode {
     readonly label: Label;
     readonly body: Statement;
+
+    constructor(params: { label: string, body: Statement }) {
+        super();
+        this.label = params.label;
+        this.body = params.body;
+    }
 }
 
 export class ReturnStatement extends BaseNode {
@@ -1085,7 +1105,7 @@ export class ReturnStatement extends BaseNode {
 
     constructor(params: { expression: Expression | null }) {
         super();
-        this.expression = this.expression;
+        this.expression = params.expression;
     }
 }
 
@@ -1160,6 +1180,17 @@ export class TryFinallyStatement extends BaseNode {
     readonly catchClause: CatchClause | null;
     // The `Finally`.
     readonly finalizer: Block;
+
+    constructor(params: {
+        body: Block,
+        catchClause: CatchClause | null,
+        finalizer: Block
+    }) {
+        super();
+        this.body = params.body;
+        this.catchClause = params.catchClause;
+        this.finalizer = params.finalizer;
+    }
 }
 
 export class WhileStatement extends BaseNode {
@@ -1314,7 +1345,8 @@ export class SpreadElement extends BaseNode {
 }
 
 // `super`
-export class Super extends BaseNode { };
+export class Super extends BaseNode {
+};
 
 // `CaseClause`
 export class SwitchCase extends BaseNode {
