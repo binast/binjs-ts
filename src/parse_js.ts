@@ -534,6 +534,34 @@ export class Importer {
         });
     }
 
+    liftFunctionExpression(json: any): S.FunctionExpression {
+        assertNodeType(json, 'FunctionExpression');
+        assertType(json.isGenerator, 'boolean');
+
+        const isAsync = false;
+        const isGenerator = json.isGenerator as boolean;
+
+        return this.cx.enterParameterScope(ps => {
+            const name = json.name === null ? null : this.liftUnboundBindingIdentifier(json.name);
+            if (name) {
+                ps.setFunctionExpressionName(name.name);
+            }
+            const params = this.liftFormalParameters(json.params);
+            return this.cx.enterVarScope(bs => {
+                const body = this.liftFunctionBody(json.body);
+                const parameterScope = ps.extractParameterScope();
+                const bodyScope = bs.extractVarScope();
+
+                // TODO: Emit an SkippableFunctionExpression when appropriate.
+                return new S.EagerFunctionExpression({
+                    isAsync, isGenerator, name,
+                    parameterScope, params,
+                    bodyScope, body
+                });
+            });
+        });
+    }
+
     liftFormalParameters(json: any): S.FormalParameters {
         assertNodeType(json, 'FormalParameters');
         return this.cx.bindParameters(() => {
@@ -716,6 +744,13 @@ export class Importer {
 
         return new S.TryCatchStatement({ body, catchClause });
     }
+    tryLiftCatchClause(json: any): S.CatchClause | null {
+        if (json === null) {
+            return null;
+        } else {
+            return this.liftCatchClause(json);
+        }
+    }
     liftCatchClause(json: any): S.CatchClause {
         assertNodeType(json, 'CatchClause');
 
@@ -731,7 +766,12 @@ export class Importer {
 
     liftTryFinallyStatement(json: any): S.TryFinallyStatement {
         assertNodeType(json, 'TryFinallyStatement');
-        return summarizeNode(json);
+
+        const body = this.liftBlock(json.body);
+        const catchClause = this.tryLiftCatchClause(json.catchClause);
+        const finalizer = this.liftBlock(json.finalizer);
+
+        return new S.TryFinallyStatement({ body, catchClause, finalizer });
     }
     liftThrowStatement(json: any): S.ThrowStatement {
         assertNodeType(json, 'ThrowStatement');
@@ -781,11 +821,15 @@ export class Importer {
 
     liftLabeledStatement(json: any): S.LabelledStatement {
         assertNodeType(json, 'LabeledStatement');
-        return summarizeNode(json);
+        assertType(json.label, 'string');
+
+        const label = json.label as string;
+        const body = this.liftStatement(json.body);
+        return new S.LabelledStatement({ label, body });
     }
     liftEmptyStatement(json: any): S.EmptyStatement {
         assertNodeType(json, 'EmptyStatement');
-        return summarizeNode(json);
+        return new S.EmptyStatement({});
     }
 
     liftExpression(json: any): S.Expression {
@@ -846,7 +890,7 @@ export class Importer {
             case 'ConditionalExpression':
                 return this.liftConditionalExpression(json);
             default:
-                return null;
+                throw new Error("Unrecognized expression");
         }
     }
     liftCallExpression(json: any): S.CallExpression {
@@ -947,34 +991,6 @@ export class Importer {
         }
 
         throw new MatchError('ArrayElement', json.type);
-    }
-    liftFunctionExpression(json: any): S.FunctionExpression {
-        assertNodeType(json, 'FunctionExpression');
-        assertType(json.isGenerator, 'boolean');
-
-        const isAsync = false;
-        const isGenerator = json.isGenerator as boolean;
-
-        return this.cx.enterParameterScope(ps => {
-            const name = json.name === null ?
-                           null :
-                           this.liftUnboundBindingIdentifier(json.name);
-            if (name)
-                ps.setFunctionExpressionName(name.name);
-            const params = this.liftFormalParameters(json.params);
-            return this.cx.enterVarScope(bs => {
-                const body = this.liftFunctionBody(json.body);
-                const parameterScope = ps.extractParameterScope();
-                const bodyScope = bs.extractVarScope();
-
-                // TODO: Emit a SkippableFunctionExpression when appropriate.
-                return new S.EagerFunctionExpression({
-                    isAsync, isGenerator, name,
-                    parameterScope, params,
-                    bodyScope, body
-                });
-            });
-        });
     }
     liftAssignmentExpression(json: any): S.AssignmentExpression {
         assertNodeType(json, 'AssignmentExpression');
