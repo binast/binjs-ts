@@ -43,6 +43,13 @@ function encode(filename: string, outdir: string) {
     const encoder = new Encoder({stringTable,
                                  nodeKindTable});
 
+    // If outdir/freqs.json exists, then load it.
+    if (fs.existsSync(outdir + "/freqs.json")) {
+        console.log("Loading frequencies JSON!");
+        const freqs = JSON.parse(fs.readFileSync(outdir + "/freqs.json", 'utf8'));
+        encoder.loadFrequenciesJson(freqs);
+    }
+
     const stringTableStream = new ArrayWriteStream();
     const stringTableEncLength = encoder.encodeStringTable(stringTableStream);
     assert.equal(stringTableEncLength, stringTableStream.array.length);
@@ -53,7 +60,6 @@ function encode(filename: string, outdir: string) {
     console.log(`Encoded string table with ${stringTable.size} entries: ` +
                 `${stringTableEncLength}`);
     console.log(`Encoded tree: ${treeEncLength}`);
-
 
     //dumpByteArray(stringTableStream.array);
     //dumpByteArray(treeStream.array);
@@ -67,6 +73,8 @@ function encode(filename: string, outdir: string) {
     dumpFile(stringTableStream.array, stringTableFile);
     dumpFile(treeStream.array, treeFile);
     dumpFile(stringTableStream.array.concat(treeStream.array), fullFile);
+
+    encoder.printFrequencies();
 }
 
 function dumpFile(arr, fileName) {

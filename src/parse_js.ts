@@ -1283,6 +1283,7 @@ export class Importer {
         assertType(json.value, 'string');
 
         const value = json.value as string;
+        this.strings.note(value);
 
         this.nodes.note(S.LiteralPropertyName);
         return new S.LiteralPropertyName({value});

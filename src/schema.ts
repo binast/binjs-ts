@@ -6,6 +6,27 @@ export type Identifier = string;
 export type IdentifierName = string;
 export type Label = string;
 
+export enum FieldType {
+    Null = 'null',
+    Boolean = 'boolean',
+    Integer = 'integer',
+    Number = 'number',
+    String = 'string',
+
+    VarScope = 'VarScope',
+    BlockScope = 'BlockScope',
+    ParameterScope = 'ParameterScope',
+}
+const Type_Identifier: FieldType = FieldType.String;
+const Type_IdentifierName: FieldType = FieldType.String;
+const Type_Label: FieldType = FieldType.String;
+
+const Type_BinaryOperator: FieldType = FieldType.String;
+const Type_UnaryOperator: FieldType = FieldType.String;
+const Type_UpdateOperator: FieldType = FieldType.String;
+const Type_VariableDeclarationKind: FieldType = FieldType.String;
+const Type_CompoundAssignmentOperator: FieldType = FieldType.String;
+
 export enum VariableDeclarationKind {
     Var = "var",
     Let = "let",
@@ -138,7 +159,7 @@ export class AssertedParameterScope {
 interface ScanHandler {
     child(name: string, opts?: {skippable: boolean});
     childArray(name: string);
-    field(name: string);
+    field(name: string, ty?: FieldType|null);
 }
 
 export abstract class BaseNode {
@@ -269,7 +290,7 @@ export class BindingIdentifier extends BaseNode {
     }
 
     static scan(h: ScanHandler) {
-        h.field('name');
+        h.field('name', Type_Identifier);
     }
 }
 
@@ -318,7 +339,7 @@ export class AssignmentTargetIdentifier extends BaseNode {
     }
 
     static scan(h: ScanHandler) {
-        h.field('name');
+        h.field('name', Type_Identifier);
     }
 }
 
@@ -358,7 +379,7 @@ export class StaticMemberAssignmentTarget extends BaseNode {
 
     static scan(h: ScanHandler) {
         h.child('object_');
-        h.field('property');
+        h.field('property', Type_IdentifierName);
     }
 }
 
@@ -451,7 +472,7 @@ export class AssignmentTargetPropertyProperty extends BaseNode {
     readonly binding: (AssignmentTarget | AssignmentTargetWithInitializer);
 
     static scan(h: ScanHandler) {
-        h.field('name');
+        h.child('name');
         h.child('binding');
     }
 }
@@ -503,7 +524,7 @@ export class ClassElement extends BaseNode {
     readonly method: MethodDefinition;
 
     static scan(h: ScanHandler) {
-        h.field('isStatic');
+        h.field('isStatic', FieldType.Boolean);
         h.child('method');
     }
 }
@@ -531,7 +552,7 @@ export class Import extends BaseNode {
     readonly namedImports: Array<ImportSpecifier>;
 
     static scan(h: ScanHandler) {
-        h.field('moduleSpecifier');
+        h.field('moduleSpecifier', FieldType.String);
         h.child('defaultBinding');
         h.childArray('namedImports');
     }
@@ -545,7 +566,7 @@ export class ImportNamespace extends BaseNode {
     readonly namespaceBinding: BindingIdentifier;
 
     static scan(h: ScanHandler) {
-        h.field('moduleSpecifier');
+        h.field('moduleSpecifier', FieldType.String);
         h.child('defaultBinding');
         h.child('namespaceBinding');
     }
@@ -570,7 +591,7 @@ export class ExportAllFrom extends BaseNode {
     readonly moduleSpecifier: string;
 
     static scan(h: ScanHandler) {
-        h.field('moduleSpecifier');
+        h.field('moduleSpecifier', FieldType.String);
     }
 }
 
@@ -581,7 +602,7 @@ export class ExportFrom extends BaseNode {
 
     static scan(h: ScanHandler) {
         h.childArray('namedExports');
-        h.field('moduleSpecifier');
+        h.field('moduleSpecifier', FieldType.String);
     }
 }
 
@@ -627,7 +648,7 @@ export class ExportFromSpecifier extends BaseNode {
     readonly exportedName: IdentifierName | null;
 
     static scan(h: ScanHandler) {
-        h.field('name');
+        h.field('name', Type_IdentifierName);
         h.field('exportedName');
     }
 }
@@ -666,8 +687,8 @@ export class EagerMethod extends BaseNode {
     readonly body: FunctionBody;
 
     static scan(h: ScanHandler) {
-        h.field('isAsync');
-        h.field('isGenerator');
+        h.field('isAsync', FieldType.Boolean);
+        h.field('isGenerator', FieldType.Boolean);
         h.child('name');
         h.field('parameterScope');
         h.field('bodyScope');
@@ -720,8 +741,8 @@ export class EagerSetter extends BaseNode {
         h.child('name');
         h.field('parameterScope');
         h.field('bodyScope');
-        h.field('param');
-        h.field('body');
+        h.child('param');
+        h.child('body');
     }
 }
 
@@ -747,6 +768,7 @@ export class DataProperty extends BaseNode {
     }
 
     static scan(h: ScanHandler) {
+        h.child('name');
         h.child('expression');
     }
 }
@@ -775,7 +797,7 @@ export class LiteralPropertyName extends BaseNode {
     }
 
     static scan(h: ScanHandler) {
-        h.field('value');
+        h.field('value', FieldType.String);
     }
 }
 
@@ -792,7 +814,7 @@ export class LiteralBooleanExpression extends BaseNode {
     }
 
     static scan(h: ScanHandler) {
-        h.field('value');
+        h.field('value', FieldType.Boolean);
     }
 }
 
@@ -832,8 +854,8 @@ export class LiteralRegExpExpression extends BaseNode {
     }
 
     static scan(h: ScanHandler) {
-        h.field('pattern');
-        h.field('flags');
+        h.field('pattern', FieldType.String);
+        h.field('flags', FieldType.String);
     }
 }
 
@@ -847,7 +869,7 @@ export class LiteralStringExpression extends BaseNode {
     }
 
     static scan(h: ScanHandler) {
-        h.field('value');
+        h.field('value', FieldType.String);
     }
 }
 
@@ -881,7 +903,7 @@ export class EagerArrowExpression extends BaseNode {
     readonly body: (FunctionBody | Expression);
 
     static scan(h: ScanHandler) {
-        h.field('isAsync');
+        h.field('isAsync', FieldType.Boolean);
         h.field('parameterScope');
         h.field('bodyScope');
         h.child('params');
@@ -948,7 +970,7 @@ export class BinaryExpression extends BaseNode {
     }
 
     static scan(h: ScanHandler) {
-        h.field('operator');
+        h.field('operator', Type_BinaryOperator);
         h.child('left');
         h.child('right');
     }
@@ -991,7 +1013,7 @@ export class CompoundAssignmentExpression extends BaseNode {
     }
 
     static scan(h: ScanHandler) {
-        h.field('operator');
+        h.field('operator', Type_CompoundAssignmentOperator);
         h.child('binding');
         h.child('expression');
     }
@@ -1074,8 +1096,8 @@ export class EagerFunctionExpression extends BaseNode {
     }
 
     static scan(h: ScanHandler) {
-        h.field('isAsync');
-        h.field('isGenerator');
+        h.field('isAsync', FieldType.Boolean);
+        h.field('isGenerator', FieldType.Boolean);
         h.child('name');
         h.field('parameterScope');
         h.field('bodyScope');
@@ -1103,7 +1125,7 @@ export class IdentifierExpression extends BaseNode {
     }
 
     static scan(h: ScanHandler) {
-        h.field('name');
+        h.field('name', Type_Identifier);
     }
 }
 
@@ -1153,7 +1175,7 @@ export class UnaryExpression extends BaseNode {
     }
 
     static scan(h: ScanHandler) {
-        h.field('operator');
+        h.field('operator', Type_UnaryOperator);
         h.child('operand');
     }
 }
@@ -1173,7 +1195,7 @@ export class StaticMemberExpression extends BaseNode {
 
     static scan(h: ScanHandler) {
         h.child('object_');
-        h.field('property');
+        h.field('property', Type_IdentifierName);
     }
 }
 
@@ -1221,8 +1243,8 @@ export class UpdateExpression extends BaseNode {
     }
 
     static scan(h: ScanHandler) {
-        h.field('isPrefix');
-        h.field('operator');
+        h.field('isPrefix', FieldType.Boolean);
+        h.field('operator', Type_UpdateOperator);
         h.child('operand');
     }
 }
@@ -1336,7 +1358,7 @@ export class ForInOfBinding extends BaseNode {
     }
 
     static scan(h: ScanHandler) {
-        h.field('kind');
+        h.field('kind', Type_VariableDeclarationKind);
         h.child('binding');
     }
 }
@@ -1453,7 +1475,7 @@ export class LabelledStatement extends BaseNode {
     }
 
     static scan(h: ScanHandler) {
-        h.field('label');
+        h.field('label', Type_Label);
         h.child('body');
     }
 }
@@ -1661,7 +1683,7 @@ export class Directive extends BaseNode {
     }
 
     static scan(h: ScanHandler) {
-        h.field('rawValue');
+        h.field('rawValue', FieldType.String);
     }
 }
 
@@ -1734,8 +1756,8 @@ export class EagerFunctionDeclaration extends BaseNode {
     }
 
     static scan(h: ScanHandler) {
-        h.field('isAsync');
-        h.field('isGenerator');
+        h.field('isAsync', FieldType.Boolean);
+        h.field('isGenerator', FieldType.Boolean);
         h.child('name');
         h.field('parameterScope');
         h.field('bodyScope');
@@ -1826,7 +1848,7 @@ export class TemplateElement extends BaseNode {
     readonly rawValue: string;
 
     static scan(h: ScanHandler) {
-        h.field('rawValue');
+        h.field('rawValue', FieldType.String);
     }
 }
 

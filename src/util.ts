@@ -1,6 +1,7 @@
 
 "use strict";
 
+import * as S from './schema';
 const assert = require('assert');
 
 const UNICODE_SPLO_BEG= 0xD800;
@@ -96,5 +97,44 @@ function encodeCodepointAppend(cp: number, bytes: Array<number>) {
         bytes.push(((cp >> 12) & 0b0011_1111) | 0b1000_0000);
         bytes.push(((cp >> 6) & 0b0011_1111) | 0b1000_0000);
         bytes.push((cp & 0b0011_1111) | 0b1000_0000);
+    }
+}
+
+export function fieldTypeForValue(val: any): S.FieldType {
+    switch (typeof(val)) {
+        case 'object': {
+            if (val === null) {
+                return S.FieldType.Null;
+            } else if (val instanceof S.AssertedVarScope) {
+                return S.FieldType.VarScope;
+            } else if (val instanceof S.AssertedBlockScope) {
+                return S.FieldType.BlockScope;
+            } else if (val instanceof S.AssertedParameterScope) {
+                return S.FieldType.ParameterScope;
+            } else {
+                throw new Error("Cannot encode field: " + val.constructor.name);
+            }
+        }
+        case 'string': {
+            return S.FieldType.String;
+        }
+        case 'boolean': {
+            return S.FieldType.Boolean;
+        }
+        case 'number': {
+            if (Number.isInteger(val)) {
+                if ((val >= 0) && (val <= 0x7fff_ffff)) {
+                    return S.FieldType.Integer;
+                } else {
+                    return S.FieldType.Number;
+                }
+            } else { 
+                assert(!Number.isInteger(val));
+                return S.FieldType.Number;
+            }
+        }
+        default: {
+            throw new Error("Cannot encode field: " + val);
+        }
     }
 }
