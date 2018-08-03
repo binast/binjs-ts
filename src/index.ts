@@ -2,6 +2,7 @@
 import * as process from 'process';
 import * as fs from 'fs';
 import * as assert from 'assert';
+import * as Stream from 'stream';
 
 import {parseScript} from 'shift-parser';
 import * as S from './schema';
@@ -40,14 +41,15 @@ function encode(filename: string, outdir: string) {
     nodeKinds.splice(0, 0, ...staticTypes);
     const nodeKindTable = new Table<string>(nodeKinds);
 
-    const encoder = new Encoder({stringTable,
-                                 nodeKindTable});
-
-    // If outdir/freqs.json exists, then load it.
+    let encoder: Encoder = null as Encoder;
     if (fs.existsSync(outdir + "/freqs.json")) {
+        // If outdir/freqs.json exists, then load it.
         console.log("Loading frequencies JSON!");
         const freqs = JSON.parse(fs.readFileSync(outdir + "/freqs.json", 'utf8'));
-        encoder.loadFrequenciesJson(freqs);
+        const probMaps = Encoder.makeProbMaps(freqs);
+        encoder = new Encoder({stringTable, nodeKindTable, probMaps});
+    } else {
+        encoder = new Encoder({stringTable, nodeKindTable});
     }
 
     const stringTableStream = new ArrayWriteStream();
@@ -60,6 +62,10 @@ function encode(filename: string, outdir: string) {
     console.log(`Encoded string table with ${stringTable.size} entries: ` +
                 `${stringTableEncLength}`);
     console.log(`Encoded tree: ${treeEncLength}`);
+
+    const compressedBytes = encoder.getCompressedBytes();
+    console.log(`Compressed bytes (${compressedBytes.length})\n` +
+                `${compressedBytes}`);
 
     //dumpByteArray(stringTableStream.array);
     //dumpByteArray(treeStream.array);
@@ -74,7 +80,10 @@ function encode(filename: string, outdir: string) {
     dumpFile(treeStream.array, treeFile);
     dumpFile(stringTableStream.array.concat(treeStream.array), fullFile);
 
-    encoder.printFrequencies();
+    console.error("KVKVKV ----------------- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+    const freqJson = encoder.printFrequencies();
+    fs.writeFileSync(outdir + '/freqs.json', JSON.stringify(freqJson, null, 4));
+    console.error("KVKVKV DONE ------------ !!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
 }
 
 function dumpFile(arr, fileName) {

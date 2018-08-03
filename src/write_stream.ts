@@ -54,73 +54,7 @@ export class EncodingWriter {
         this.writeByte(b | 0x80);
     }
     writeVarUint(uval: number): number {
-        // ASSERT: Number.isInteger(uval);
-        // ASSERT: uval >= 0;
-        // ASSERT: uval <= 0xFFFFFFFF
-
-        // 7-bit number.
-        if (uval < 0x80) {
-            this.writeByte(uval);
-            return 1;
-        }
-
-        // 14-bit number.
-        if (uval < 0x4000) {
-            this.writeNonTerminalByte(uval & 0x7F);
-            this.writeByte((uval >> 7) & 0x7F);
-            return 2;
-        }
-
-        // 21-bit number.
-        if (uval < 0x200000) {
-            this.writeNonTerminalByte(uval & 0x7F);
-            this.writeNonTerminalByte((uval >> 7) & 0x7F);
-            this.writeByte((uval >> 14) & 0x7F);
-            return 3;
-        }
-
-        // 28-bit number.
-        if (uval < 0x10000000) {
-            this.writeNonTerminalByte(uval & 0x7F);
-            this.writeNonTerminalByte((uval >> 7) & 0x7F);
-            this.writeNonTerminalByte((uval >> 14) & 0x7F);
-            this.writeByte((uval >> 21) & 0x7F);
-            return 4;
-        }
-
-        // 35-bit number.
-        if (uval < 0x800000000) {
-            this.writeNonTerminalByte(uval & 0x7F);
-            this.writeNonTerminalByte((uval >> 7) & 0x7F);
-            this.writeNonTerminalByte((uval >> 14) & 0x7F);
-            this.writeNonTerminalByte((uval >> 21) & 0x7F);
-            this.writeByte((uval >> 28) & 0x7F);
-            return 5;
-        }
-
-        // 42-bit number.
-        if (uval < 0x40000000000) {
-            this.writeNonTerminalByte(uval & 0x7F);
-            this.writeNonTerminalByte((uval >> 7) & 0x7F);
-            this.writeNonTerminalByte((uval >> 14) & 0x7F);
-            this.writeNonTerminalByte((uval >> 21) & 0x7F);
-            this.writeNonTerminalByte((uval >> 28) & 0x7F);
-            this.writeByte((uval >> 35) & 0x7F);
-            return 6;
-        }
-
-        // 49-bit number.
-        if (uval < 0x2000000000000) {
-            this.writeNonTerminalByte(uval & 0x7F);
-            this.writeNonTerminalByte((uval >> 7) & 0x7F);
-            this.writeNonTerminalByte((uval >> 14) & 0x7F);
-            this.writeNonTerminalByte((uval >> 21) & 0x7F);
-            this.writeNonTerminalByte((uval >> 28) & 0x7F);
-            this.writeByte((uval >> 35) & 0x7F);
-            return 6;
-        }
-
-        assert(uval < 0x2000000000000, `Value ${uval} out of range`);
+        return this.writeArray(util.uintToVarUintBytes(uval));
     }
 
     writeFloat(f: number): number {

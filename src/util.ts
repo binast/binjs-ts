@@ -138,3 +138,56 @@ export function fieldTypeForValue(val: any): S.FieldType {
         }
     }
 }
+
+export function floatToBytes(val: number): Uint8Array {
+    const f64 = new Float64Array([val]);
+    return new Uint8Array(f64.buffer);
+}
+
+export function isByte(val: number): boolean {
+    return Number.isInteger(val) && (val >= 0) && (val <= 0xff);
+}
+
+export function uintToVarUintBytes(uval: number): Array<number> {
+    // ASSERT: Number.isInteger(uval);
+    // ASSERT: uval >= 0;
+    // ASSERT: uval <= 0xFFFFFFFF
+
+    const result = new Array<number>();
+
+    let b: number = uval & 0x7F;
+
+    // 7-bit number.
+    if (uval < 0x80) {
+        result.push(b);
+        return result;
+    }
+    result.push(b | 0x80);
+    b = (uval >>> 7) & 0x7F;
+
+    // 14-bit number.
+    if (uval < 0x4000) {
+        result.push(b);
+        return result;
+    }
+    result.push(b | 0x80);
+    b = (uval >>> 14) & 0x7F;
+
+    // 21-bit number.
+    if (uval < 0x200000) {
+        result.push(b);
+        return result;
+    }
+    result.push(b | 0x80);
+    b = (uval >>> 21) & 0x7F;
+
+    // 28-bit number.
+    if (uval < 0x10000000) {
+        result.push(b);
+        return result;
+    }
+    result.push(b | 0x80);
+    b = (uval >>> 28) & 0xF;
+    result.push(b);
+    return result;
+}

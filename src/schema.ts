@@ -95,6 +95,26 @@ export enum UpdateOperator {
 // Deferred assertions
 //
 
+export class ScopeEntry {
+    readonly name: Identifier;
+    readonly captured: boolean;
+
+    constructor(params: {name: Identifier, captured: boolean}) {
+        this.name = params.name;
+        this.captured = params.captured;
+    }
+}
+
+function makeScopeEntries(idList: IdentifierList,
+                          capturedNames: IdentifierList)
+  : Array<ScopeEntry>
+{
+    let capSet: Set<Identifier> = new Set(capturedNames);
+    return idList.map(name => {
+        return new ScopeEntry({name, captured: capSet.has(name)});
+    });
+}
+
 export class AssertedBlockScope {
     // checked eagerly during transformation
     readonly lexicallyDeclaredNames: IdentifierList;
@@ -103,6 +123,8 @@ export class AssertedBlockScope {
     readonly capturedNames: IdentifierList;
     readonly hasDirectEval: boolean;
 
+    lazyLexicalEntries: Array<ScopeEntry>|null;
+
     constructor(params: {lexicallyDeclaredNames: IdentifierList,
                          capturedNames: IdentifierList,
                          hasDirectEval: boolean})
@@ -110,6 +132,15 @@ export class AssertedBlockScope {
         this.lexicallyDeclaredNames = params.lexicallyDeclaredNames;
         this.capturedNames = params.capturedNames;
         this.hasDirectEval = params.hasDirectEval;
+        this.lazyLexicalEntries = null;
+    }
+
+    lexicalEntries(): Array<ScopeEntry> {
+        if (this.lazyLexicalEntries === null) {
+            this.lazyLexicalEntries = makeScopeEntries(
+                this.lexicallyDeclaredNames, this.capturedNames);
+        }
+        return this.lazyLexicalEntries as Array<ScopeEntry>;
     }
 }
 
@@ -122,6 +153,9 @@ export class AssertedVarScope {
     readonly capturedNames: IdentifierList;
     readonly hasDirectEval: boolean;
 
+    lazyLexicalEntries: Array<ScopeEntry>|null;
+    lazyVarEntries: Array<ScopeEntry>|null;
+
     constructor(params: {lexicallyDeclaredNames: IdentifierList,
                          varDeclaredNames: IdentifierList,
                          capturedNames: IdentifierList,
@@ -131,6 +165,23 @@ export class AssertedVarScope {
         this.varDeclaredNames = params.varDeclaredNames;
         this.capturedNames = params.capturedNames;
         this.hasDirectEval = params.hasDirectEval;
+        this.lazyLexicalEntries = null;
+        this.lazyVarEntries = null;
+    }
+
+    lexicalEntries(): Array<ScopeEntry> {
+        if (this.lazyLexicalEntries === null) {
+            this.lazyLexicalEntries = makeScopeEntries(
+                this.lexicallyDeclaredNames, this.capturedNames);
+        }
+        return this.lazyLexicalEntries as Array<ScopeEntry>;
+    }
+    varEntries(): Array<ScopeEntry> {
+        if (this.lazyVarEntries === null) {
+            this.lazyVarEntries = makeScopeEntries(
+                this.varDeclaredNames, this.capturedNames);
+        }
+        return this.lazyVarEntries as Array<ScopeEntry>;
     }
 }
 
@@ -142,6 +193,8 @@ export class AssertedParameterScope {
     readonly capturedNames: IdentifierList;
     readonly hasDirectEval: boolean;
 
+    lazyParamEntries: Array<ScopeEntry>|null;
+
     constructor(params: {parameterNames: IdentifierList,
                          capturedNames: IdentifierList,
                          hasDirectEval: boolean})
@@ -149,6 +202,15 @@ export class AssertedParameterScope {
         this.parameterNames = params.parameterNames;
         this.capturedNames = params.capturedNames;
         this.hasDirectEval = params.hasDirectEval;
+        this.lazyParamEntries = null;
+    }
+
+    paramEntries(): Array<ScopeEntry> {
+        if (this.lazyParamEntries === null) {
+            this.lazyParamEntries = makeScopeEntries(
+                this.parameterNames, this.capturedNames);
+        }
+        return this.lazyParamEntries as Array<ScopeEntry>;
     }
 }
 
